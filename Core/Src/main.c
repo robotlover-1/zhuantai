@@ -38,8 +38,8 @@
 extern TIM_HandleTypeDef g_timx_encode_chy_handle;
 extern TIM_HandleTypeDef timx_handler;      /* TIM6句柄，atim.c中定义 */
 extern u8 time_run;
+extern volatile u32 rx_debug_cnt;
 
-volatile u8 sys_init_done = 0;     /* ISR初始化完成标志 */
 u8 printf_flag = 0;
 u8 run_flag = 0;
 u8 run_printf_flag = 0;
@@ -92,7 +92,7 @@ float location;         /* 位置 */
 int32_t motor_pwm;      /* 电机PWM值 */
 
 int32_t pulse_low = 14000;  // 进孔脉冲数
-int32_t pulse_out = 42300;  // 出孔脉冲数
+int32_t pulse_out = 39000;  // 出孔脉冲数
 int32_t pluse_ele = 38000;  // 光电检测脉冲限制  
 
 int loop1 = 0;
@@ -157,7 +157,7 @@ int main(void)
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
-
+  
   /* USER CODE BEGIN Init */
     Stm32_Clock_Init();                
     delay_init(168);                   
@@ -170,7 +170,7 @@ int main(void)
     TIM4_Init(5000 - 1, 16800 - 1);        
     step_motor_init();
     gtim_timx_encoder_chy_init(0XFFFF, 0); 
-    btim_timx_int_init(1000 - 1, 84 - 1);  
+    btim_timx_int_init(1000 - 1, 84 - 1);   /* 1ms中断，用于PID控制 */
     pid_init();
 
 
@@ -190,45 +190,35 @@ int main(void)
   uart_init(115200);                     /* 直接寄存器配置，无需HAL */
 
   /* USER CODE BEGIN 2 */
-    __disable_irq();                                           /* 永久关中断，用轮询替代 */
+    __enable_irq();                                            /* 开启全局中断，TIM6使用硬件中断 */
+    USART_RX_STA = 0;                                          /* 清除开中断瞬间可能收到的噪声 */
 	param_load_all();
   if (writeFlashData != 0) param_save_all();
+  dcmotor_stop();
     // TIM4->CR1 |= TIM_CR1_CEN;                                  /* 启动TIM4(1s) */
     // TIM5->CR1 |= TIM_CR1_CEN;                                  /* 启动TIM5(500ms) */
-    sys_init_done = 1;                                         /* 标志初始化完成 */
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
     {
-        /* TIM6轮询：替代ISR做1kHz处理 */
-        if (TIM6->SR & TIM_SR_UIF) {
-            TIM6->SR = ~TIM_SR_UIF;
-            if (sys_init_done) HAL_TIM_PeriodElapsedCallback(&timx_handler);
-        }
+        /* TIM6使用硬件中断，无需轮询 */
         // /* TIM5: 500ms周期 */
         // if (TIM5->SR & TIM_SR_UIF) { TIM5->SR = ~TIM_SR_UIF; printf("T5:500ms\r\n"); }
         // /* TIM4: 1s周期 */
         // if (TIM4->SR & TIM_SR_UIF) { TIM4->SR = ~TIM_SR_UIF; printf("T4:1s\r\n"); }
-        static u8 in1_last = 0;
-        static u8 in2_last = 0;
+        static u8 in1_last = 0xFF;  /* 0xFF=未初始化 */
+        static u8 in2_last = 0xFF;
         u8 in1_now, in2_now;
-        
-         if (USART1->SR & USART_SR_RXNE) {
-            u8 ch = USART1->DR;
-            if ((USART_RX_STA & 0x8000) == 0) {
-                if (USART_RX_STA & 0x4000) {
-                    if (ch == 0x0a) USART_RX_STA |= 0x8000; else USART_RX_STA = 0;
-                } else {
-                    if (ch == 0x0d) USART_RX_STA |= 0x4000;
-                    else { USART_RX_BUF[USART_RX_STA & 0X3FFF] = ch; USART_RX_STA++;
-                           if (USART_RX_STA > (USART_REC_LEN - 1)) USART_RX_STA = 0; }
-                }
-            }
+     
+        /* 首次运行，读取当前引脚值作为初始状态，避免误触发 */
+        if (in1_last == 0xFF) {
+            in1_last = HAL_GPIO_ReadPin(ST1_IN1_GPIO_PORT, ST1_IN1_GPIO_PIN);
+            in2_last = HAL_GPIO_ReadPin(ST1_IN2_GPIO_PORT, ST1_IN2_GPIO_PIN);
         }
-
+     
+        /* USART1接收由USART1_IRQHandler硬件中断完成，主循环无需轮询 */
         if (USART_RX_STA_4 & 0x8000)
         {
             len = USART_RX_STA_4 & 0x3fff;
@@ -236,20 +226,24 @@ int main(void)
             HAL_UART_Transmit(&UART4_Handler, (uint8_t *)USART_RX_BUF_4, len, 1000);
         }
 
-        
+        //printf("USART_RX_STA: 0x%04X\r\n", USART_RX_STA);
         if (USART_RX_STA & 0x8000)
         {
             len = USART_RX_STA & 0x3fff;
             USART_RX_STA = 0;
 
             /* 直接回显，绕过HAL */
-            for (i = 0; i < len; i++) {
-                while (!(USART1->SR & USART_SR_TC)) {}
-                USART1->DR = USART_RX_BUF[i];
-            }
+            // for (i = 0; i < len; i++) {
+            //     uint32_t timeout = 500000;
+            //     while (!(USART1->SR & USART_SR_TC)) {
+            //         if (--timeout == 0) break;
+            //     }
+            //     USART1->DR = USART_RX_BUF[i];
+            // }
             //printf("\r\n");
 
-            
+            printf("before cmd_dispatch\r\n");
+            printf("USART_RX_BUF: %s\r\n", USART_RX_BUF);
             cmd_dispatch(USART_RX_BUF, len);
 
             
@@ -289,7 +283,10 @@ int main(void)
                 USART_TX_BUF[0] = 'P';
                 USART_TX_BUF[1] = station_x + '0';
                 for (i = 0; i < 2; i++) {
-                    while (!(USART1->SR & USART_SR_TC)) {}
+                    uint32_t timeout = 500000;
+                    while (!(USART1->SR & USART_SR_TC)) {
+                        if (--timeout == 0) break;
+                    }
                     USART1->DR = USART_TX_BUF[i];
                 }
                 printf("\r\n");

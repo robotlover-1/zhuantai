@@ -134,7 +134,7 @@ void delay_init(u8 SYSCLK)
 	u32 reload;
 #endif
     HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);//SysTickƵ��ΪHCLK
-    fac_us=SYSCLK/8;
+    fac_us=SYSCLK;
 #if SYSTEM_SUPPORT_OS 						//�����Ҫ֧��OS.
 	reload=SYSCLK;					    //ÿ���ӵļ������� ��λΪK	   
 	reload*=1000000/delay_ostickspersec;	//����delay_ostickspersec�趨���ʱ��

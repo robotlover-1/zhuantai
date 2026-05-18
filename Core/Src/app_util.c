@@ -108,10 +108,14 @@ void motor_stop_normal(void)
  */
 void motor_start_motion(void)
 {
+    extern int DIR;
     time_out = 0;
     HAL_TIM_Base_Start_IT(&TIM5_Handler);
     pid_init();
     run_printf_flag = 1;
+    /* 启动两个PWM通道，方向由motor_pwm_set通过CCR控制 */
+    HAL_TIM_PWM_Start(&g_timx_pwm_chy_handle, TIM_CHANNEL_1);
+    HAL_TIM_PWM_Start(&g_timx_pwm_chy_handle, TIM_CHANNEL_4);
     dcmotor_start();
     duzhuan_flag = 1;
 }

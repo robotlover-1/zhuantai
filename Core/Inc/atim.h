@@ -5,7 +5,7 @@
  *
  * 定时器汇总（STM32F407, HSE=8MHz, SYSCLK=168MHz, APB1=42MHz×2=84MHz, APB2=84MHz×2=168MHz）
  *
- * TIM1 (APB2: 168MHz) - PA8(CH1正转PWM+步进脉冲), PA11(CH1N反转PWM+步进方向)
+ * TIM1 (APB2: 168MHz) - PA8(CH1正转PWM), PA11(CH4反转PWM)
  *                       atim_timx_pwm_chy_init(3600-1, 10) -> ~4.24kHz 电机PWM驱动
  *
  * TIM3 (APB1: 84MHz)  - PA6(CH1编码器A相), PA7(CH2编码器B相)

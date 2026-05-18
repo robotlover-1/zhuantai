@@ -22,7 +22,7 @@
 
 /* 平式步进回零信号输出(开漏) */
 #define ST1_SHUTDOWN_GPIO_PORT                  PC
-#define ST1_SHUTDOWN_GPIO_PIN                   GPIO_PIN_0
+#define ST1_SHUTDOWN_GPIO_PIN                   GPIO_PIN_1
 #define ST1_SHUTDOWN_GPIO_CLK_ENABLE()          do{ __HAL_RCC_GPIOC_CLK_ENABLE(); }while(0)
 
 /* 球式光电信号输入 */

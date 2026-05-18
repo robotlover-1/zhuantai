@@ -40,14 +40,20 @@ extern int loop1;
 extern int loop2;
 extern int PhotoPos;
 extern float SetPoint_P;
+extern float SetPoint_C;
+extern float SetPluse;
 extern float ActualValue_P;
 extern int32_t motor_pwm;
 extern int duzhuan_flag;
 extern int32_t Encode_now;
+extern float speed_m;
 
 extern TIM_HandleTypeDef TIM4_Handler;
 extern TIM_HandleTypeDef TIM5_Handler;
 extern TIM_HandleTypeDef TIM4_Handler;
+
+extern u8 time_run;
+extern u8 time_out;
 
 extern UART_HandleTypeDef UART4_Handler;
 extern USART_HandleTypeDef UART1_Handler;
@@ -70,7 +76,7 @@ void cmd_set_loop1(u8 *buf, int len) /* T: 大循环次数设�?*/
     printf("loop1:%d\r\n", loop1);
 }
 
-void cmd_set_loop2(u8 *buf, int len) /* H: 速度设置 */
+void cmd_set_loop2(u8 *buf, int len) /* H: 小循环次数设置 */
 {
     extern int loop2;
     loop2 = parse_uart_number(buf, len);
@@ -176,7 +182,80 @@ void cmd_rtb(void) /* RTB: 反转 */
     step_motor_motion(1, 1);
 }
 
-void cmd_tim3(void) /* TIM3: TIM4计时测试 */
+
+
+void cmd_tim4_test(void) /* T4: TIM4计时测试(1Hz) - 已被T1-T5取代，保留T6备用 */
+{
+    extern u8 time_run;
+    printf("T4已被工位测试取代，请用T6测试定时器\r\n");
+}
+
+void cmd_tim5_test(void) /* T5: TIM5超时测试(0.5s) - 已被T1-T5取代 */
+{
+    printf("T5已被工位测试取代，请用T6测试定时器\r\n");
+}
+
+void cmd_tim6_test(void) /* T6: TIM6 PID周期测试(1ms) */
+{
+    extern int k_loop;
+    int cnt_start, cnt_end;
+    printf("TIM6测试 2秒(1ms中断, PID每25ms循环)...\r\n");
+    cnt_start = k_loop;
+    delay_ms(2000);
+    cnt_end = k_loop;
+    printf("k_loop增量=%d (期望~80, 25ms×80=2000ms)\r\n", cnt_end - cnt_start);
+}
+
+/********************* 工位往返测试 T1-T5 *********************/
+
+static void cmd_station_roundtrip(int base)
+{
+    int i, target;
+    printf("工位%d往返测试开始\r\n", base);
+    error = 0; run_flag = 0; run_printf_flag = 0;
+    station_x = read_hal();
+    if(station_x != base){
+        printf("当前位置:%d, 需要先回到工位%d\r\n", station_x, base);
+        step_motor_LX(base, dir_jud(base, station_x));
+        wait_motion_done();
+    }
+    for (i = 1; i <= 5; i++)
+    {
+        if (i == base) continue;
+        target = i;
+        if (error) { printf("出错停止\r\n"); break; }
+
+        /* 从base到target */
+        printf("→ 工位%d\n", target);
+        station_x = read_hal();
+        if (station_x < 1 || station_x > 5) { printf("HAL错误\r\n"); break; }
+        DIR = dir_jud(target, station_x);
+        step_motor_LX(target, DIR);
+        wait_motion_done();
+        delay_ms(10000);
+
+        /* 从target回到base */
+        if (error) { printf("出错停止\r\n"); break; }
+        printf("← 工位%d\n", base);
+        station_x = read_hal();
+        if (station_x < 1 || station_x > 5) { printf("HAL错误\r\n"); break; }
+        DIR = dir_jud(base, station_x);
+        step_motor_LX(base, DIR);
+        wait_motion_done();
+        if (i < 5) delay_ms(10000);  /* 最后一次往返后不等待 */
+    }
+    printf("工位%d往返测试结束\r\n", base);
+}
+
+void cmd_test_1(void) { cmd_station_roundtrip(1); }
+void cmd_test_2(void) { cmd_station_roundtrip(2); }
+void cmd_test_3(void) { cmd_station_roundtrip(3); }
+void cmd_test_4(void) { cmd_station_roundtrip(4); }
+void cmd_test_5(void) { cmd_station_roundtrip(5); }
+
+/**************************************************************/
+
+void cmd_tim3(void) /* TIM3: 保留旧命令, 实际调T4 */
 {
     extern u8 time_run;
     HAL_TIM_Base_Start_IT(&TIM4_Handler);
@@ -207,6 +286,22 @@ void cmd_res(void) /* RES: 串口更新程序 */
     HAL_NVIC_SystemReset();
 }
 
+void cmd_show_params(void) /* PARA: 显示所有参数 */
+{
+    printf("====== 当前参数 ======\r\n");
+    printf("F(最大速度): %d\r\n", force);
+    printf("R(最大占空比): %d\r\n", force_F);
+    printf("V(匀速进孔速度): %d\r\n", time_c);
+    printf("S(慢速进孔脉冲数): %d\r\n", pulse_low);
+    printf("E(光电检测限制): %d\r\n", pluse_ele);
+    printf("P(拍照孔位): %d\r\n", PhotoPos);
+    printf("T(大循环次数): %d\r\n", loop1);
+    printf("H(小循环次数): %d\r\n", loop2);
+    printf("====================\r\n");
+    printf("Alarm: %d  Error: %d\r\n", alarm, error);
+    printf("Encode: %d  RunFlag: %d\r\n", Encode_now, run_flag);
+}
+
 void cmd_alarm(void) /* ALARM: 查询报警代码 */
 {
     printf("报警代码:%d\r\n", alarm);
@@ -221,6 +316,11 @@ void cmd_goto_station(int station) /* L1-L5: 跳转到指定工�?*/
     if (run_flag == 0)
     {
         station_x = read_hal();
+        if (station_x == station)
+        {
+            printf("已在工位%d\r\n", station);
+            return;
+        }
         DIR = dir_jud(station, station_x);
         step_motor_LX(station, DIR);
     }
@@ -386,7 +486,58 @@ void cmd_gmm_test(void) /* gmm: 反转拍照测试 */
 {
     gff_gmm_loop(0);
 }
+/********************* 波形采集 DBG *********************/
 
+#define DBG_MAX  300
+static int32_t dbg_pos[DBG_MAX];
+static float   dbg_spd[DBG_MAX];
+static int     dbg_cnt = 0;
+
+void cmd_dbg_start(void) /* DBG: 采集一次正向运动的编码器数据 */
+{
+    int i;
+    printf("DBG 开始采集(250ms间隔, 最多%d点)...\r\n", DBG_MAX);
+    error = 0; run_flag = 0; run_printf_flag = 0;
+
+    if (ele_is_triggered() && run_printf_flag == 0 && error == 0 && run_flag == 0)
+    {
+        DIR = 0;
+        motor_start_motion();
+        SetPoint_C = Encode_now;
+        SetPoint_P = Encode_now + 39200;
+        run_flag = 1;
+
+        dbg_cnt = 0;
+        while (1)
+        {
+            if (dbg_cnt < DBG_MAX) {
+                dbg_pos[dbg_cnt] = Encode_now;
+                dbg_spd[dbg_cnt] = speed_m;
+                dbg_cnt++;
+            }
+            delay_ms(25);  /* 25ms采样间隔，与PID同步 */
+
+            if (run_printf_flag == 0) break;  /* 运动结束 */
+            if (error) break;
+        }
+
+        /* 等待安全停稳 */
+        delay_ms(200);
+    }
+
+    printf("DBG 采集结束, 共%d个点\r\n", dbg_cnt);
+}
+
+void cmd_dbg_dump(void) /* DUMP: 打印采集的数据(CSV格式) */
+{
+    int i;
+    printf("=== DBG DATA (CSV) ===\n");
+    printf("idx,pos,speed\n");
+    for (i = 0; i < dbg_cnt; i++) {
+        printf("%d,%d,%.0f\n", i, (int)dbg_pos[i], (double)dbg_spd[i]);
+    }
+    printf("=== DBG END ===\n");
+}
 /******************************************************************************************/
 /* 命令分发函数 */
 /******************************************************************************************/
@@ -406,7 +557,7 @@ int cmd_dispatch(u8 *buf, int len)
         cmd_set_loop1(buf, len);
         return 1;
     }
-    if (buf[0] == 'H' && buf[1] == ':')       /* H: 速度设置 */
+    if (buf[0] == 'H' && buf[1] == ':')       /* H: 小循环次数 */
     {
         //printf("H:%.*s\r\n", len, buf);
         cmd_set_loop2(buf, len);
@@ -501,10 +652,42 @@ int cmd_dispatch(u8 *buf, int len)
         cmd_rtb();
         return 1;
     }
+
+
     if (buf[0] == 'T' && buf[1] == 'I' && buf[2] == 'M' && buf[3] == '3')
     {
         //printf("TIM3:%.*s\r\n", len, buf);
         cmd_tim3();
+        return 1;
+    }
+    if (buf[0] == 'T' && buf[1] == '1')
+    {
+        cmd_test_1();
+        return 1;
+    }
+    if (buf[0] == 'T' && buf[1] == '2')
+    {
+        cmd_test_2();
+        return 1;
+    }
+    if (buf[0] == 'T' && buf[1] == '3')
+    {
+        cmd_test_3();
+        return 1;
+    }
+    if (buf[0] == 'T' && buf[1] == '4')
+    {
+        cmd_test_4();
+        return 1;
+    }
+    if (buf[0] == 'T' && buf[1] == '5')
+    {
+        cmd_test_5();
+        return 1;
+    }
+    if (buf[0] == 'T' && buf[1] == '6')
+    {
+        cmd_tim6_test();
         return 1;
     }
     if (buf[0] == 'R' && buf[1] == 'I' && buf[2] == 'N' && buf[3] == 'G')
@@ -530,6 +713,11 @@ int cmd_dispatch(u8 *buf, int len)
     {
         //printf("ALARM:%.*s\r\n", len, buf);
         cmd_alarm();
+        return 1;
+    }
+    if (buf[0] == 'P' && buf[1] == 'A' && buf[2] == 'R' && buf[3] == 'A')
+    {
+        cmd_show_params();
         return 1;
     }
 
@@ -564,6 +752,16 @@ int cmd_dispatch(u8 *buf, int len)
     {
         // printf("gmm:%.*s\r\n", len, buf);
         cmd_gmm_test();
+        return 1;
+    }
+    if (buf[0] == 'D' && buf[1] == 'B' && buf[2] == 'G')
+    {
+        cmd_dbg_start();
+        return 1;
+    }
+    if (buf[0] == 'D' && buf[1] == 'U' && buf[2] == 'M' && buf[3] == 'P')
+    {
+        cmd_dbg_dump();
         return 1;
     }
 

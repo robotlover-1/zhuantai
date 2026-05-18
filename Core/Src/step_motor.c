@@ -60,7 +60,7 @@ void step_motor_init(void)
 
 	gpio_init_struct.Pin = ST1_HAL3_GPIO_PIN;			  
 	gpio_init_struct.Mode = GPIO_MODE_INPUT;			  
-	gpio_init_struct.Pull = GPIO_PULLDOWN;				  
+	gpio_init_struct.Pull = GPIO_NOPULL;				  
 	gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;		  
 	HAL_GPIO_Init(ST1_HAL3_GPIO_PORT, &gpio_init_struct); 
 
@@ -155,7 +155,7 @@ void step_motor_motion(int num, int dir)
 				DIR = 0;
 				motor_start_motion();
 				SetPoint_C = Encode_now;
-				SetPoint_P = Encode_now + 43000;
+				SetPoint_P = Encode_now + 39200;
 				run_flag = 1;
 				delay_ms(500);
 				while (1)
@@ -283,7 +283,7 @@ void step_motor_motion(int num, int dir)
 				DIR = 1;
 				motor_start_motion();
 				SetPoint_C = Encode_now;
-				SetPoint_P = Encode_now - 43200;
+				SetPoint_P = Encode_now - 39200;
 				run_flag = 1;
 				delay_ms(500);
 				while (1)
@@ -519,30 +519,28 @@ void set_speed(int32_t compare)
  */
 static int read_single_hal(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin, int weight)
 {
-    int sam1 = HAL_GPIO_ReadPin(GPIOx, GPIO_Pin);
-    delay_ms(5);
-    int sam2 = HAL_GPIO_ReadPin(GPIOx, GPIO_Pin);
-    delay_ms(5);
-    int sam3 = HAL_GPIO_ReadPin(GPIOx, GPIO_Pin);
-    
-    /* 多数表决: 3次中至少2次为高才认定为高电平 */
-    int level = ((sam1 + sam2 + sam3) >= 2) ? 0 : 1;
-    
-    return (level == 0) ? weight : 0;
+    int sum = 0;
+    int i;
+    for (i = 0; i < 5; i++) {
+        sum += HAL_GPIO_ReadPin(GPIOx, GPIO_Pin);
+        delay_ms(10);
+    }
+    /* 5次中至少3次为高才认定为高电平 */
+    return (sum >= 3) ? weight : 0;
 }
 
 /**
  * @brief       读取霍尔工位
- * @retval      1-5 有效工位�? -1 错误
+ * @retval      1-5 有效工位, -1 错误
  * @note        霍尔信号组合: HAL1(weight=1) + HAL2(weight=2) + HAL3(weight=4)
- *              7->5映射, 其他无效值返�?1
+ *              7->5映射, 其他无效值返回-1
  */
 int read_hal(void)
 {
     int hal = 0;
     int retry = 0;
 
-    /* 先检测光电信�?*/
+    /* 先检测光电传感器是否触发 */
     if (HAL_GPIO_ReadPin(ST1_ELE_GPIO_PORT, ST1_ELE_GPIO_PIN) == 1)
     {
         error = 1;
@@ -552,25 +550,35 @@ int read_hal(void)
         return -1;
     }
 
-    /* 最多重�?次读取霍�?*/
+    /* 最多重试2次读取霍尔 */
     for (retry = 0; retry < 2; retry++)
     {
         hal = 0;
         hal += read_single_hal(ST1_HAL1_GPIO_PORT, ST1_HAL1_GPIO_PIN, 1);
-		printf("hal1 = %d\r\n", hal);
         hal += read_single_hal(ST1_HAL2_GPIO_PORT, ST1_HAL2_GPIO_PIN, 2);
-		printf("hal2 = %d\r\n", hal);
         hal += read_single_hal(ST1_HAL3_GPIO_PORT, ST1_HAL3_GPIO_PIN, 4);
-		printf("hal3 = %d\r\n", hal);
 
-        if (hal == 7) hal = 5; /* 7映射�?号工�?*/
-
-        if (hal >= 1 && hal <= 5)
+        /* 映射表: 实测权重 -> 工位号
+         *   权重2 (0,1,0) → 工位1
+         *   权重4 (0,0,1) → 工位2
+         *   权重3 (1,1,0) → 工位3
+         *   权重5 (1,0,1) → 工位4
+         *   权重1 (1,0,0) → 工位5
+         *   权重7 (1,1,1) → 工位5 (兼容旧项目 7→5)
+         */
+        switch (hal)
         {
-            return hal; /* 有效工位，直接返�?*/
+			case 0: return 4;
+            case 2: return 1;
+            case 4: return 2;
+            case 3: return 3;
+            case 5: return 5;
+			case 1: return 5;
+            //case 7: return 5;
         }
+        
 
-        /* 无效值，延时后重�?*/
+        /* 无效值，延时后重试 */
         delay_ms(50);
     }
 
@@ -584,34 +592,15 @@ int read_hal(void)
 extern int DIR;								 
 int dir_jud(int target_num, int current_num) 
 {
-	
-	if (target_num > current_num)
-	{
-		if ((target_num - current_num) > 2)
-		{
-			DIR = 0;
-			return 0;
-		}
-		else
-		{
-			DIR = 1;
-			return 1;
-		}
-	}
-	else if (target_num < current_num)
-	{
-		if ((current_num - target_num) > 2)
-		{
-			DIR = 1;
-			return 1;
-		}
-		else
-		{
-			DIR = 0;
-			return 0;
-		}
-	}
-	return 2;
+    /* 5站圆形排列，计算正转步数(递增方向) */
+    int fwd = (target_num - current_num + 5) % 5;
+    if (fwd <= 2) {
+        DIR = 0;  /* 正转步数 ≤ 2，走正转 */
+        return 0;
+    } else {
+        DIR = 1;  /* 正转步数 > 2，走反转才最短 */
+        return 1;
+    }
 }
 void step_motor_LX(int target_num, int dir)
 {
@@ -661,32 +650,27 @@ void dcmotor_start(void)
  */
 void dcmotor_stop(void)
 {
-	HAL_TIM_PWM_Stop(&g_timx_pwm_chy_handle, TIM_CHANNEL_1);						  
-	HAL_TIMEx_PWMN_Stop(&g_timx_pwm_chy_handle, TIM_CHANNEL_1);						  
-	HAL_GPIO_WritePin(ST1_SHUTDOWN_GPIO_PORT, ST1_SHUTDOWN_GPIO_PIN, GPIO_PIN_RESET); 
+    /* 先设0%，再停通道，最后关闭主输出 */
+	/* Start两个通道设0%，确保引脚被主动拉低而非悬浮 */
+    HAL_TIM_PWM_Start(&g_timx_pwm_chy_handle, TIM_CHANNEL_1);
+    HAL_TIM_PWM_Start(&g_timx_pwm_chy_handle, TIM_CHANNEL_4);
+    __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle, TIM_CHANNEL_1, 0);
+    __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle, TIM_CHANNEL_4, 0);
+    // HAL_TIM_PWM_Stop(&g_timx_pwm_chy_handle, TIM_CHANNEL_1);
+    // HAL_TIM_PWM_Stop(&g_timx_pwm_chy_handle, TIM_CHANNEL_4);
 }
 
 /**
  * @brief       设置电机方向
- * @param       para: 方向 0=正转 1=反转
- * @note        通过PWM通道切换实现方向控制
- * @retval      无
+ * @param       para: 方向 0=正转(PA8 CH1) 1=反转(PA11 CH4)
  */
 void dcmotor_dir(uint8_t para)
 {
-	HAL_TIM_PWM_Stop(&g_timx_pwm_chy_handle, TIM_CHANNEL_1);	
-	HAL_TIMEx_PWMN_Stop(&g_timx_pwm_chy_handle, TIM_CHANNEL_1); 
-
-	if (para == 0) 
-	{
-		
-		HAL_TIM_PWM_Start(&g_timx_pwm_chy_handle, TIM_CHANNEL_1); 
-	}
-	else if (para == 1) 
-	{
-		
-		HAL_TIMEx_PWMN_Start(&g_timx_pwm_chy_handle, TIM_CHANNEL_1); 
-	}
+    /* 两个通道都Start确保引脚被主动驱动 */
+    HAL_TIM_PWM_Start(&g_timx_pwm_chy_handle, TIM_CHANNEL_1);
+    HAL_TIM_PWM_Start(&g_timx_pwm_chy_handle, TIM_CHANNEL_4);
+    __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle, TIM_CHANNEL_1, 0);
+    __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle, TIM_CHANNEL_4, 0);
 }
 
 /**
@@ -697,19 +681,17 @@ void dcmotor_dir(uint8_t para)
  */
 void motor_pwm_set(int32_t para)
 {
-	if (para >= 0)
-	{
-		dcmotor_dir(0); 
-						
-		set_speed(para);
-	}
-	else if (para < 0)
-	{
-		dcmotor_dir(1); 
-						
-		para = -para;
-		set_speed(para);
-	}
+    if (para >= 0)
+    {
+        __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle, TIM_CHANNEL_1, para);
+        __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle, TIM_CHANNEL_4, 0);
+    }
+    else if (para < 0)
+    {
+        para = -para;
+        __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle, TIM_CHANNEL_1, 0);
+        __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle, TIM_CHANNEL_4, para);
+    }
 }
 
 /*************************************    编码器测速    速度计算    ****************************************************/

@@ -19,8 +19,13 @@ void _sys_exit(int x)
 
 int fputc(int ch, FILE *f)
 {
+    uint32_t timeout = 500000;
     while (!(USART1->SR & USART_SR_TC))
     {
+        if (--timeout == 0)
+        {
+            break;
+        }
     }
     USART1->DR = (uint8_t)ch;
     return ch;
@@ -64,8 +69,15 @@ void uart_init(u32 bound)
     fraction = (u16)(84000000 % (bound * 16) * 16 / (bound * 16) + 0.5);
     USART1->BRR = (mantissa << 4) | (fraction & 0xF);
 
-    /* 使能USART、TX、RX、RXNE中断 */
-    USART1->CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE | USART_CR1_RXNEIE;
+    /* 先使能USART、TX、RX（暂不开RXNE中断，防止TX稳定前的噪声） */
+    USART1->CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
+    /* 发一个换行符稳定TX线（使TC标志可正常置位） */
+    USART1->DR = 0x0A;
+    while (!(USART1->SR & USART_SR_TC)) {}
+    /* 清除可能因TX稳定前的噪声产生的RXNE标志 */
+    if (USART1->SR & USART_SR_RXNE) (void)USART1->DR;
+    /* 再开RXNE中断 */
+    USART1->CR1 |= USART_CR1_RXNEIE;
     HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
     HAL_NVIC_EnableIRQ(USART1_IRQn);
 
@@ -73,31 +85,7 @@ void uart_init(u32 bound)
     UART1_Handler.Instance = USART1;
 }
 
-void HAL_USART_MspInit(USART_HandleTypeDef *husart)
-{
-    GPIO_InitTypeDef GPIO_Initure = {0};
-
-    if (husart->Instance == USART1)
-    {
-        __HAL_RCC_GPIOA_CLK_ENABLE();
-        __HAL_RCC_USART1_CLK_ENABLE();
-
-        GPIO_Initure.Pin = GPIO_PIN_9;
-        GPIO_Initure.Mode = GPIO_MODE_AF_PP;
-        GPIO_Initure.Pull = GPIO_PULLUP;
-        GPIO_Initure.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-        GPIO_Initure.Alternate = GPIO_AF7_USART1;
-        HAL_GPIO_Init(GPIOA, &GPIO_Initure);
-
-        GPIO_Initure.Pin = GPIO_PIN_10;
-        HAL_GPIO_Init(GPIOA, &GPIO_Initure);
-
-#if EN_USART1_RX
-        HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
-        HAL_NVIC_EnableIRQ(USART1_IRQn);
-#endif
-    }
-}
+/* uart_init()使用直接寄存器配置，不调用HAL_USART_Init()，故此MspInit无需实现 */
 
 u32 tpingg(u32 tmp)
 {
@@ -131,6 +119,9 @@ void send(uint16_t data)
     (void)send;
 }
 
+/* 调试计数器：每收到一个字节+1，主循环中打印 */
+volatile u32 rx_debug_cnt = 0;
+
 void USART1_IRQHandler(void)
 {
     u8 Res;
@@ -140,8 +131,12 @@ void USART1_IRQHandler(void)
     if (USART1->SR & USART_SR_RXNE)
     {
         Res = (u8)(USART1->DR & 0x00FF);
+        
+        
+  
         if ((USART_RX_STA & 0x8000) == 0)
         {
+            
             if (USART_RX_STA & 0x4000)
             {
                 if (Res != 0x0a)

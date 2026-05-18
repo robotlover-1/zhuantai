@@ -11,7 +11,6 @@
 
 TIM_HandleTypeDef g_timx_pwm_chy_handle;
 TIM_OC_InitTypeDef g_timx_oc_pwm_chy = {0};
-TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig;
 
 void atim_timx_pwm_chy_init(uint16_t arr, uint16_t psc)
 {
@@ -23,27 +22,19 @@ void atim_timx_pwm_chy_init(uint16_t arr, uint16_t psc)
     g_timx_pwm_chy_handle.Init.RepetitionCounter = 0;
     HAL_TIM_PWM_Init(&g_timx_pwm_chy_handle);
 
+    /* 配置CH1(PA8) - 正转PWM */
     g_timx_oc_pwm_chy.OCMode = TIM_OCMODE_PWM1;
     g_timx_oc_pwm_chy.Pulse = 0;
     g_timx_oc_pwm_chy.OCPolarity = TIM_OCPOLARITY_HIGH;
-    g_timx_oc_pwm_chy.OCNPolarity = TIM_OCNPOLARITY_HIGH;
     g_timx_oc_pwm_chy.OCFastMode = TIM_OCFAST_DISABLE;
-    g_timx_oc_pwm_chy.OCIdleState = TIM_OCIDLESTATE_SET;
-    g_timx_oc_pwm_chy.OCNIdleState = TIM_OCNIDLESTATE_SET;
-    HAL_TIM_PWM_ConfigChannel(&g_timx_pwm_chy_handle, &g_timx_oc_pwm_chy, ATIM_TIMX_PWM_CHY);
+    HAL_TIM_PWM_ConfigChannel(&g_timx_pwm_chy_handle, &g_timx_oc_pwm_chy, TIM_CHANNEL_1);
+
+    /* 配置CH4(PA11) - 反转PWM */
+    HAL_TIM_PWM_ConfigChannel(&g_timx_pwm_chy_handle, &g_timx_oc_pwm_chy, TIM_CHANNEL_4);
 
     HAL_NVIC_SetPriority(ATIM_TIMX_INT_IRQn, 1, 0);
     HAL_NVIC_EnableIRQ(ATIM_TIMX_INT_IRQn);
     HAL_TIM_Base_Start_IT(&g_timx_pwm_chy_handle);
-
-    sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_ENABLE;
-    sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
-    sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
-    sBreakDeadTimeConfig.DeadTime = 0X0F;
-    sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
-    sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_LOW;
-    sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
-    HAL_TIMEx_ConfigBreakDeadTime(&g_timx_pwm_chy_handle, &sBreakDeadTimeConfig);
 }
 
 void HAL_TIM_PWM_MspInit(TIM_HandleTypeDef *htim)
@@ -62,7 +53,7 @@ void HAL_TIM_PWM_MspInit(TIM_HandleTypeDef *htim)
         gpio_init_struct.Alternate = GPIO_AF1_TIM1;
         HAL_GPIO_Init(GPIOA, &gpio_init_struct);
 
-        /* TIM1_CH1N - PA11: 球式反转PWM/平式步进方向复用(互补输出) */
+        /* TIM1_CH4 - PA11: 球式反转PWM/平式步进方向复用 */
         gpio_init_struct.Pin = GPIO_PIN_11;
         gpio_init_struct.Mode = GPIO_MODE_AF_PP;
         gpio_init_struct.Pull = GPIO_NOPULL;
@@ -199,13 +190,12 @@ void HAL_TIM_Base_MspInit(TIM_HandleTypeDef *htim)
     }
 }
 
-void TIM6_IRQHandler(void)
+void TIM6_DAC_IRQHandler(void)
 {
     HAL_TIM_IRQHandler(&timx_handler);
 }
 
 int32_t g_timx_encode_count = 0;
-extern volatile u8 sys_init_done;   /* main.c中定义，初始化完成标志 */
 extern int decel_i;
 extern u8 run_flag;
 extern int32_t Encode_now;
@@ -230,10 +220,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     static uint8_t val = 0;
     if (htim->Instance == TIM6)
     {
-        if (!sys_init_done) return;      /* 初始化未完成，跳过ISR处理 */
         Encode_now = gtim_get_encode();
         speed_computer(Encode_now, 5);
         location = Encode_now;
+        //printf("TIM6:\r\n");            /* ISR中严禁printf，会与主循环争抢USART1 */
         if (run_flag == 1)
         {
             if (DIR == 0)
@@ -254,6 +244,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         if (val % SMAPLSE_PID_SPEED == 0)
         {
             k_loop++;
+            //printf("k_loop%d\r\n", k_loop);        /* ISR中严禁printf */
             if (run_flag == 1)
             {
                 motor_pwm = position_pid_speed(location);
@@ -306,12 +297,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     else if (htim->Instance == TIM5)
     {
         time_out++;
-        printf("TIM5 timeout: %d\r\n", time_out);
+        //printf("TIM5 timeout: %d\r\n", time_out);
     }
     else if (htim->Instance == TIM4)
     {
         time_run++;
-        printf("TIM4 time_run: %d\r\n", time_run);
+        //printf("TIM4 time_run: %d\r\n", time_run);
     }
 }
 
