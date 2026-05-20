@@ -223,7 +223,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         Encode_now = gtim_get_encode();
         speed_computer(Encode_now, 5);
         location = Encode_now;
-        //printf("TIM6:\r\n");            /* ISR中严禁printf，会与主循环争抢USART1 */
+        //printf("TIM6:\r\n");            /* ISR中严禁printf，会与主循环争抢UART5 */
         if (run_flag == 1)
         {
             if (DIR == 0)

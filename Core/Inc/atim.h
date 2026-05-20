@@ -21,7 +21,6 @@
  *                       btim_timx_int_init(1000-1, 84-1) -> 84MHz/84/1000 = 1ms
  ****************************************************************************************************
  */
-
 #ifndef __ATIM_H
 #define __ATIM_H
 
@@ -36,7 +35,6 @@
 #define ATIM_TIMX_INT_IRQn                     TIM1_UP_TIM10_IRQn
 #define ATIM_TIMX_INT_IRQHandler               TIM1_UP_TIM10_IRQHandler
 #define ATIM_TIMX_PWM_CHY_CLK_ENABLE()         do{ __HAL_RCC_TIM1_CLK_ENABLE(); }while(0)
-
 #define GTIM_TIMX_ENCODER                      TIM3
 #define GTIM_TIMX_ENCODER_INT_IRQn             TIM3_IRQn
 #define GTIM_TIMX_ENCODER_INT_IRQHandler       TIM3_IRQHandler
@@ -44,7 +42,6 @@
 #define GTIM_TIMX_ENCODER_CH1_CLK_ENABLE()     do{ __HAL_RCC_TIM3_CLK_ENABLE(); }while(0)
 #define GTIM_TIMX_ENCODER_CH2                  TIM_CHANNEL_2
 #define GTIM_TIMX_ENCODER_CH2_CLK_ENABLE()     do{ __HAL_RCC_TIM3_CLK_ENABLE(); }while(0)
-
 #define BTIM_TIMX_INT                          TIM6
 #define BTIM_TIMX_INT_IRQn                     TIM6_DAC_IRQn
 #define BTIM_TIMX_INT_IRQHandler               TIM6_DAC_IRQHandler
@@ -62,10 +59,14 @@ extern TIM_HandleTypeDef g_timx_pwm_chy_handle;
 extern TIM_HandleTypeDef TIM4_Handler;
 
 void TIM5_Init(u16 arr, u16 psc);
-void TIM4_Init(u16 arr, u16 psc);
-void atim_timx_pwm_chy_init(uint16_t arr, uint16_t psc);
-void gtim_timx_encoder_chy_init(uint16_t arr, uint16_t psc);
-void btim_timx_int_init(uint16_t arr, uint16_t psc);
-int gtim_get_encode(void);
 
+void TIM4_Init(u16 arr, u16 psc);
+
+void atim_timx_pwm_chy_init(uint16_t arr, uint16_t psc);
+
+void gtim_timx_encoder_chy_init(uint16_t arr, uint16_t psc);
+
+void btim_timx_int_init(uint16_t arr, uint16_t psc);
+
+int gtim_get_encode(void);
 #endif

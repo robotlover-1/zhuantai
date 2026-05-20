@@ -6,9 +6,9 @@
 #include "stdlib.h"
 #include "string.h"
 
-/*************************************** ��һ���� CRCУ�� ********************************************/
+/*************************************** 第一部分 CRC校验 ********************************************/
 
-/* CRC ��λ�ֽ�ֵ�� */ 
+/* CRC 高位字节值表 */ 
 static const uint8_t s_crchi[] = {
     0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0,
     0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41,
@@ -38,7 +38,7 @@ static const uint8_t s_crchi[] = {
     0x80, 0x41, 0x00, 0xC1, 0x81, 0x40
 };
 
-/* CRC ��λ�ֽ�ֵ�� */ 
+/* CRC 低位字节值表 */ 
 const uint8_t s_crclo[] = {
     0x00, 0xC0, 0xC1, 0x01, 0xC3, 0x03, 0x02, 0xC2, 0xC6, 0x06,
     0x07, 0xC7, 0x05, 0xC5, 0xC4, 0x04, 0xCC, 0x0C, 0x0D, 0xCD,
@@ -69,141 +69,140 @@ const uint8_t s_crclo[] = {
 };
 
 /**
- * @brief       CRC16У��
- * @param       *_pBuf�����ݵ�ַ
- * @param       _usLen�����ݳ���
- * @note        ����crc16-modbus������ʽhex��8005
- * @retval      У����
+ * @brief       CRC16校验
+ * @param       *_pBuf：数据地址
+ * @param       _usLen：数据长度
+ * @note        采用crc16-modbus，多项式hex：8005
+ * @retval      校验结果
  */
 uint16_t crc16_calc(uint8_t *_pBuf, uint16_t _usLen)
 {
-    uint8_t ucCRCHi = 0xFF;                         /* ��CRC�ֽڳ�ʼ�� */
-    uint8_t ucCRCLo = 0xFF;                         /* ��CRC �ֽڳ�ʼ�� */
-    uint16_t usIndex;                               /* CRCѭ���е����� */
+    uint8_t ucCRCHi = 0xFF;                         /* 高CRC字节初始化 */
+    uint8_t ucCRCLo = 0xFF;                         /* 低CRC 字节初始化 */
+    uint16_t usIndex;                               /* CRC循环中的索引 */
 
     while (_usLen--)
     {
-        usIndex = ucCRCLo ^ *_pBuf++;               /* ����CRC */
+        usIndex = ucCRCLo ^ *_pBuf++;               /* 计算CRC */
         ucCRCLo = ucCRCHi ^ s_crchi[usIndex];
         ucCRCHi = s_crclo[usIndex];
     }
-    return ((uint16_t)ucCRCHi << 8 | ucCRCLo);      /* ����У���������ֽ��ڸ�λ */
+    return ((uint16_t)ucCRCHi << 8 | ucCRCLo);      /* 返回校验结果，高字节在高位 */
 }
 
+/*************************************** 第二部分 底层函数 ********************************************/
 
-/*************************************** �ڶ����� �ײ㺯�� ********************************************/
-
-__IO uint8_t debug_rev_data[DEBUG_REV_MAX_LEN];     /* ��Ž������ݵ����飨���λ������� */
-__IO uint8_t debug_rev_p = 0;                       /* ��ַƫ���� */
+__IO uint8_t debug_rev_data[DEBUG_REV_MAX_LEN];     /* 存放接收数据的数组（环形缓冲区） */
+__IO uint8_t debug_rev_p = 0;                       /* 地址偏移量 */
 
 debug_data g_debug;
 debug_data_rev debug_rev;
 
 /**
- * @brief       �ڴ��ʼ��
- * @param       *data���ڴ���ʼ��ַ
- * @retval      ��
+ * @brief       内存初始化
+ * @param       *data：内存起始地址
+ * @retval      无
  */
 void debug_obj_init(debug_data *data)
 {
     size_t obj_size = sizeof(debug_data);
-    memset(data, 0, (size_t)obj_size);             /* ��ָ����Χ�ڴ����� */
+    memset(data, 0, (size_t)obj_size);             /* 把指定范围内存清零 */
 }
 
 /**
- * @brief       ��λ�����ݽ���
- * @param       *data�����յ����ݣ���ַ��
- * @note        ���û��λ��������������ݣ��ٴ����Ӧ�Ľṹ���Ա��
- * @retval      ��
+ * @brief       上位机数据解析
+ * @param       *data：接收到的数据地址
+ * @note        利用环形缓冲区来接收数据，再存进相应的结构体成员中
+ * @retval      无
  */
 void debug_handle(uint8_t *data)
 {
     uint8_t temp[DEBUG_REV_MAX_LEN];
     uint8_t i;
 
-    if (debug_rev_p >= DEBUG_REV_MAX_LEN)          /* ���������������飩��󳤶� */
+    if (debug_rev_p >= DEBUG_REV_MAX_LEN)          /* 超过缓冲区（数组）最大长度 */
     {
-        debug_rev_p = 0;                           /* ��ַƫ�������� */
+        debug_rev_p = 0;                           /* 地址偏移量归零 */
     }
 
-    debug_rev_data[debug_rev_p] = *(data);         /* ȡ�����ݣ�������� */
+    debug_rev_data[debug_rev_p] = *(data);         /* 取出数据，存进数组 */
 
-    if (*data == DEBUG_DATA_END)                   /* �ж��Ƿ��յ�֡β */
+    if (*data == DEBUG_DATA_END)                   /* 判断是否收到帧尾 */
     {
-        if (debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 4) % DEBUG_REV_MAX_LEN] == DEBUG_DATA_HEAD)                        /* ���ݰ�����Ϊ5���ֽڣ��жϵ�һ���ֽ��Ƿ�Ϊ֡ͷ */
+        if (debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 4) % DEBUG_REV_MAX_LEN] == DEBUG_DATA_HEAD)                        /* 数据包长度为5个字节，判断第一个字节是否为帧头 */
         {
             for (i = 0; i < 2; i++)
             {
-                temp[i] = debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 4 + i) % DEBUG_REV_MAX_LEN];                         /* ȡ��֡ͷ���������5���ֽڵ����ݰ�û�������� */
+                temp[i] = debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 4 + i) % DEBUG_REV_MAX_LEN];                         /* 取出帧头、数据类别，5个字节的数据包没有数据域 */
             }
 
-#if EN_CRC                                         /* ����CRCУ�� */
+#if EN_CRC                                         /* 进行CRC校验 */
             if (crc16_calc(temp, 2) == ((debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 4 + 2) % DEBUG_REV_MAX_LEN] << 8) | \
                                          debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 4 + 3) % DEBUG_REV_MAX_LEN]))
 #endif
             {
-                if (debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 4 + 1) % DEBUG_REV_MAX_LEN] == CMD_GET_ALL_DATA)           /* �ж���������Ƿ�Ϊ����ȡȫ������ */
+                if (debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 4 + 1) % DEBUG_REV_MAX_LEN] == CMD_GET_ALL_DATA)           /* 判断数据类别是否为：获取全部参数 */
                 {
-                    debug_upload_data(&g_debug, TYPE_STATUS);                                                                    /* ���͵��״̬ */
-                    debug_upload_data(&g_debug, TYPE_SPEED);                                                                     /* �����ٶ�ֵ */
-                    debug_upload_data(&g_debug, TYPE_HAL_ENC);                                                                   /* ���ͻ�����������λ�� */
-                    debug_upload_data(&g_debug, TYPE_VBUS);                                                                      /* ���͵�ѹ */
-                    debug_upload_data(&g_debug, TYPE_AMP);                                                                       /* ���͵��� */
-                    debug_upload_data(&g_debug, TYPE_TEMP);                                                                      /* �����¶� */
-                    debug_upload_data(&g_debug, TYPE_SUM_LEN);                                                                   /* ��������� */
-                    debug_upload_data(&g_debug, TYPE_BEM);                                                                       /* ���ͷ��綯�� */
-                    debug_upload_data(&g_debug, TYPE_MOTOR_CODE);                                                                /* ���͵������ */
+                    debug_upload_data(&g_debug, TYPE_STATUS);                                                                    /* 发送电机状态 */
+                    debug_upload_data(&g_debug, TYPE_SPEED);                                                                     /* 发送速度值 */
+                    debug_upload_data(&g_debug, TYPE_HAL_ENC);                                                                   /* 发送霍尔、编码器位置 */
+                    debug_upload_data(&g_debug, TYPE_VBUS);                                                                      /* 发送电压 */
+                    debug_upload_data(&g_debug, TYPE_AMP);                                                                       /* 发送电流 */
+                    debug_upload_data(&g_debug, TYPE_TEMP);                                                                      /* 发送温度 */
+                    debug_upload_data(&g_debug, TYPE_SUM_LEN);                                                                   /* 发送总里程 */
+                    debug_upload_data(&g_debug, TYPE_BEM);                                                                       /* 发送反电动势 */
+                    debug_upload_data(&g_debug, TYPE_MOTOR_CODE);                                                                /* 发送电机类型 */
                     for (i = TYPE_PID1; i < TYPE_PID10; i++)
                     {
-                        debug_upload_data(&g_debug, i);                                                                          /* ����PID���� */
+                        debug_upload_data(&g_debug, i);                                                                          /* 发送PID参数 */
                     }
                 }
             }
         }
 
-        if (debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 5) % DEBUG_REV_MAX_LEN] == DEBUG_DATA_HEAD)                        /* ���ݰ�����Ϊ6���ֽڣ��жϵ�һ���ֽ��Ƿ�Ϊ֡ͷ */
+        if (debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 4) % DEBUG_REV_MAX_LEN] == DEBUG_DATA_HEAD)                        /* 数据包长度为5个字节，判断第一个字节是否为帧头 */
         {
             for (i = 0; i < 3; i++)
             {
-                temp[i] = debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 5 + i) % DEBUG_REV_MAX_LEN];                         /* ȡ��֡ͷ��������������� */
+                temp[i] = debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 4 + i) % DEBUG_REV_MAX_LEN];                         /* 取出帧头、数据类别，5个字节的数据包没有数据域 */
             }
-#if EN_CRC                                         /* ����CRCУ�� */
+#if EN_CRC                                         /* 进行CRC校验 */
             if (crc16_calc(temp, 3) == ((debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 5 + 3) % DEBUG_REV_MAX_LEN] << 8) | \
                                          debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 5 + 4) % DEBUG_REV_MAX_LEN]))
 #endif
             {
-                switch (debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 5 + 1) % DEBUG_REV_MAX_LEN])                           /* �ж�������� */
+                switch (debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 5 + 1) % DEBUG_REV_MAX_LEN])                           /* 判断数据类别 */
                 {
-                    case CMD_SET_CTR_CODE:                                                                                       /* �·�����ָ�� */
+                    case CMD_SET_CTR_CODE:                                                                                       /* 下发控制指令 */
                         debug_rev.Ctrl_code = debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 5 + 2) % DEBUG_REV_MAX_LEN];
                         break;
 
-                    case CMD_SET_CTR_MODE:                                                                                       /* �·�����ģʽ */
+                    case CMD_SET_CTR_MODE:                                                                                       /* 下发控制模式 */
                         debug_rev.Ctrl_mode = debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 5 + 2) % DEBUG_REV_MAX_LEN];
                         break;
                 }
             }
         }
 
-        if (debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 6) % DEBUG_REV_MAX_LEN] == DEBUG_DATA_HEAD)                        /* ���ݰ�����Ϊ7���ֽڣ��жϵ�һ���ֽ��Ƿ�Ϊ֡ͷ */
+        if (debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 4) % DEBUG_REV_MAX_LEN] == DEBUG_DATA_HEAD)                        /* 数据包长度为5个字节，判断第一个字节是否为帧头 */
         {
             for (i = 0; i < 4; i++)
             {
-                temp[i] = debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 6 + i) % DEBUG_REV_MAX_LEN];                         /* ȡ��֡ͷ��������������� */
+                temp[i] = debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 4 + i) % DEBUG_REV_MAX_LEN];                         /* 取出帧头、数据类别，5个字节的数据包没有数据域 */
             }
-#if EN_CRC                                         /* ����CRCУ�� */
+#if EN_CRC                                         /* 进行CRC校验 */
             if (crc16_calc(temp, 4) == ((debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 6 + 4) % DEBUG_REV_MAX_LEN] << 8) | \
                                          debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 6 + 5) % DEBUG_REV_MAX_LEN]))
 #endif
             {
-                switch (debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 6 + 1) % DEBUG_REV_MAX_LEN])                           /* �ж�������� */
+                switch (debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 5 + 1) % DEBUG_REV_MAX_LEN])                           /* 判断数据类别 */
                 {
-                    case CMD_SET_SPEED:                                                                                          /* �趨����ٶ� */
+                    case CMD_SET_SPEED:                                                                                          /* 设定电机速度 */
 //                        *(debug_rev.speed) = (int16_t)((debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 6 + 2) % DEBUG_REV_MAX_LEN] << 8) | \
 //                                                        debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 6 + 3) % DEBUG_REV_MAX_LEN]);
                         break;
 
-                    case CMD_SET_TORQUE:                                                                                         /* �趨ת�� */
+                    case CMD_SET_TORQUE:                                                                                         /* 设定转矩 */
                         *(debug_rev.torque) = (debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 6 + 2) % DEBUG_REV_MAX_LEN] << 8) | \
                                                debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 6 + 3) % DEBUG_REV_MAX_LEN];
                         break;
@@ -211,18 +210,18 @@ void debug_handle(uint8_t *data)
             }
         }
 
-        if (debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 16) % DEBUG_REV_MAX_LEN] == DEBUG_DATA_HEAD)                       /* ���ݰ�����Ϊ17���ֽڣ��жϵ�һ���ֽ��Ƿ�Ϊ֡ͷ */
+        if (debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 4) % DEBUG_REV_MAX_LEN] == DEBUG_DATA_HEAD)                        /* 数据包长度为5个字节，判断第一个字节是否为帧头 */
         {
             for (i = 0; i < 14; i++)
             {
-                temp[i] = debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 16 + i) % DEBUG_REV_MAX_LEN];                        /* ȡ��֡ͷ��������������� */
+                temp[i] = debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 4 + i) % DEBUG_REV_MAX_LEN];                         /* 取出帧头、数据类别，5个字节的数据包没有数据域 */
             }
-#if EN_CRC                                          /* ����CRCУ�� */
+#if EN_CRC                                         /* 进行CRC校验 */
             if (crc16_calc(temp, 14) == ((debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 16 + 14) % DEBUG_REV_MAX_LEN] << 8) | \
                                           debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 16 + 15) % DEBUG_REV_MAX_LEN]))
 #endif
             {
-                switch (debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 16 + 1) % DEBUG_REV_MAX_LEN])                          /* �ж�������� */
+                switch (debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 5 + 1) % DEBUG_REV_MAX_LEN])                           /* 判断数据类别 */
                 {
                     case CMD_SET_PID1:
                     case CMD_SET_PID2:
@@ -234,7 +233,7 @@ void debug_handle(uint8_t *data)
                     case CMD_SET_PID8:
                     case CMD_SET_PID9:
                     case CMD_SET_PID10:
-                    for (i = 0; i < 12; i++)                                                                                     /* �����趨��PID���� */
+                    for (i = 0; i < 12; i++)                                                                                     /* 接收设定的PID参数 */
                     {
                         g_debug.pid[debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 16 + 1) % DEBUG_REV_MAX_LEN] - CMD_SET_PID1].pid.pidi8[i] = \
                                     debug_rev_data[(debug_rev_p + DEBUG_REV_MAX_LEN - 16 + 2 + i) % DEBUG_REV_MAX_LEN];
@@ -249,100 +248,100 @@ void debug_handle(uint8_t *data)
 }
 
 /**
- * @brief       �����ϴ�
- * @param       *data���ϴ������ݣ���ַ��
- * @param       upload_type���ϴ����������
- * @retval      ��
+ * @brief       内存初始化
+ * @param       *data：内存起始地址
+ * @param       upload_type：上传的数据类别
+ * @retval      校验结果
  */
 void debug_upload_data(debug_data *data, uint8_t upload_type)
 {
     uint8_t cur_data, i;
-    uint8_t upload_data[37];                                            /* �����ϴ����� */
-    upload_data[0] = DEBUG_DATA_HEAD;                                   /* ���ݰ���1���ֽڣ������0��Ԫ�أ����̶�Ϊ֡ͷ */
-    cur_data = 2;                                                       /* ������ӵ�3���ֽڣ������2��Ԫ�أ���ʼ */
+    uint8_t upload_data[37];                                            /* 数据上传数组 */
+    upload_data[0] = DEBUG_DATA_HEAD;                                   /* 数据包第1个字节（数组第0个元素），固定为帧头 */
+    cur_data = 2;                                                       /* 数据域从第3个字节（数组第2个元素）开始 */
 
-    switch (upload_type)                                                /* �ж�������� */
+    switch (upload_type)                                                /* 判断数据类别 */
     {
-        case TYPE_STATUS:                                               /* �豸״̬ */
-            upload_data[1] = upload_type;                               /* ���ݰ���2���ֽڣ������1��Ԫ�أ����̶�Ϊ������� */
-            upload_data[cur_data++] = data->status;                     /* ����Ҫ���͵������� */
+        case TYPE_STATUS:                                               /* 设备状态 */
+            upload_data[1] = upload_type;                               /* 数据包第2个字节（数组第1个元素），固定为数据类别 */
+            upload_data[cur_data++] = data->status;                     /* 存入要发送的数据域 */
             break;
 
-        case TYPE_SPEED:                                                /* ����ٶ� */
+        case TYPE_SPEED:                                                /* 电机速度 */
             upload_data[1] = upload_type;
-            upload_data[cur_data++] = (data->speed >> 8) & 0xFF;        /* �ȴ����ٶ�ֵ��8λ��С��ģʽ��u16����u8���ͣ�ֻȡ��8λ�� */
-            upload_data[cur_data++] = data->speed & 0xFF;               /* �ٴ����ٶ�ֵ��8λ */
+            upload_data[cur_data++] = (data->speed >> 8) & 0xFF;        /* 先存入速度值高8位（小端模式中u16赋给u8类型，只取低8位） */
+            upload_data[cur_data++] = (data->speed >> 8) & 0xFF;        /* 先存入速度值高8位（小端模式中u16赋给u8类型，只取低8位） */
             break;
 
-        case TYPE_HAL_ENC:                                              /* ������������λ��ֵ */
+        case TYPE_HAL_ENC:                                              /* 霍尔、编码器位置值 */
             upload_data[1] = upload_type;
-            upload_data[cur_data++] = (data->hall_p) & 0x08;            /* �������λ��ֵ */
-            upload_data[cur_data++] = (data->encode_p >> 8) & 0xFF;     /* ���������λ��ֵ��8λ */
-            upload_data[cur_data++] = (data->encode_p) & 0xFF;          /* ���������λ��ֵ��8λ */
+            upload_data[cur_data++] = (data->hall_p) & 0x08;            /* 存入霍尔位置值 */
+            upload_data[cur_data++] = (data->encode_p >> 8) & 0xFF;     /* 存入编码器位置值高8位 */
+            upload_data[cur_data++] = (data->encode_p >> 8) & 0xFF;     /* 存入编码器位置值高8位 */
             break;
 
-        case TYPE_VBUS:                                                                 /* ��ѹ����Χ 0~100.99 V */
+        case TYPE_VBUS:                                                                 /* 电压，范围 0~100.99 V */
             upload_data[1] = upload_type;
-            upload_data[cur_data++] = ((uint8_t)data->bus_vol) % 101;                   /* �����ѹֵ�������֣��������ֲ���������100 */
-            upload_data[cur_data++] = ((uint16_t)(data->bus_vol * 100)) % 100;          /* �����ѹֵС�����֣�С�����ֲ���������99 */
+            upload_data[cur_data++] = ((uint8_t)data->bus_vol) % 101;                   /* 存入电压值整数部分，整数部分不允许超过100 */
+            upload_data[cur_data++] = ((uint8_t)data->bus_vol) % 101;                   /* 存入电压值整数部分，整数部分不允许超过100 */
             break;
 
-        case TYPE_AMP:                                                                  /* ���� */
+        case TYPE_AMP:                                                                  /* 电流 */
             upload_data[1] = upload_type;
-            upload_data[cur_data++] = (((int16_t)(data->amp[0] * 1000)) >> 8) & 0xFF;   /* ����U�������8λ */
-            upload_data[cur_data++] = ((int16_t)(data->amp[0] * 1000)) & 0xFF;          /* ����U�������8λ */
-            upload_data[cur_data++] = (((int16_t)(data->amp[1] * 1000)) >> 8) & 0xFF;   /* ����V�������8λ */
-            upload_data[cur_data++] = ((int16_t)(data->amp[1] * 1000)) & 0xFF;          /* ����V�������8λ */
-            upload_data[cur_data++] = (((int16_t)(data->amp[2] * 1000)) >> 8) & 0xFF;   /* ����W�������8λ */
-            upload_data[cur_data++] = ((int16_t)(data->amp[2] * 1000)) & 0xFF;          /* ����W�������8λ */
+            upload_data[cur_data++] = (((int16_t)(data->amp[0] * 1000)) >> 8) & 0xFF;   /* 存入U相电流高8位 */
+            upload_data[cur_data++] = (((int16_t)(data->amp[0] * 1000)) >> 8) & 0xFF;   /* 存入U相电流高8位 */
+            upload_data[cur_data++] = (((int16_t)(data->amp[1] * 1000)) >> 8) & 0xFF;   /* 存入V相电流高8位 */
+            upload_data[cur_data++] = (((int16_t)(data->amp[1] * 1000)) >> 8) & 0xFF;   /* 存入V相电流高8位 */
+            upload_data[cur_data++] = (((int16_t)(data->amp[2] * 1000)) >> 8) & 0xFF;   /* 存入W相电流高8位 */
+            upload_data[cur_data++] = (((int16_t)(data->amp[2] * 1000)) >> 8) & 0xFF;   /* 存入W相电流高8位 */
             break;
 
-        case TYPE_TEMP:                                                                 /* �¶� */
+        case TYPE_TEMP:                                                                 /* 温度 */
             upload_data[1] = upload_type;
-            upload_data[cur_data++] = (uint8_t)(data->temp[0] + 50);                    /* �����������¶� */
-            upload_data[cur_data++] = (uint8_t)(data->temp[1] + 50);                    /* �������¶� */
+            upload_data[cur_data++] = (uint8_t)(data->temp[0] + 50);                    /* 存入驱动板温度 */
+            upload_data[cur_data++] = (uint8_t)(data->temp[0] + 50);                    /* 存入驱动板温度 */
             break;
 
-        case TYPE_SUM_LEN:                                                              /* ����� */
+        case TYPE_SUM_LEN:                                                              /* 总里程 */
             upload_data[1] = upload_type;
-            upload_data[cur_data++] = (data->sum_len >> 56) & 0xFF;                     /* ��������� 56~63 λ */
-            upload_data[cur_data++] = (data->sum_len >> 48) & 0xFF;                     /* ��������� 48~55 λ */
-            upload_data[cur_data++] = (data->sum_len >> 40) & 0xFF;                     /* ��������� 40~47 λ */
-            upload_data[cur_data++] = (data->sum_len >> 32) & 0xFF;                     /* ��������� 32~39 λ */
-            upload_data[cur_data++] = (data->sum_len >> 24) & 0xFF;                     /* ��������� 24~31 λ */
-            upload_data[cur_data++] = (data->sum_len >> 16) & 0xFF;                     /* ��������� 16~23 λ */
-            upload_data[cur_data++] = (data->sum_len >> 8) & 0xFF;                      /* ��������� 8~15 λ */
-            upload_data[cur_data++] = (data->sum_len >> 0) & 0xFF;                      /* ��������� 0~7 λ */
+            upload_data[cur_data++] = (data->sum_len >> 56) & 0xFF;                     /* 存入总里程 56~63 位 */
+            upload_data[cur_data++] = (data->sum_len >> 56) & 0xFF;                     /* 存入总里程 56~63 位 */
+            upload_data[cur_data++] = (data->sum_len >> 56) & 0xFF;                     /* 存入总里程 56~63 位 */
+            upload_data[cur_data++] = (data->sum_len >> 56) & 0xFF;                     /* 存入总里程 56~63 位 */
+            upload_data[cur_data++] = (data->sum_len >> 56) & 0xFF;                     /* 存入总里程 56~63 位 */
+            upload_data[cur_data++] = (data->sum_len >> 56) & 0xFF;                     /* 存入总里程 56~63 位 */
+            upload_data[cur_data++] = (data->sum_len >> 56) & 0xFF;                     /* 存入总里程 56~63 位 */
+            upload_data[cur_data++] = (data->sum_len >> 56) & 0xFF;                     /* 存入总里程 56~63 位 */
             break;
 
-        case TYPE_BEM:                                                                  /* ���綯�� */
+        case TYPE_BEM:                                                                  /* 反电动势 */
             upload_data[1] = upload_type;
-            upload_data[cur_data++] = (int8_t)data->bem[0];                             /* ����U�෴�綯�Ƶ�ѹ�������� */
-            upload_data[cur_data++] = ((int16_t)(data->bem[0] * 100)) % 100;            /* ����U�෴�綯�Ƶ�ѹС������ */
-            upload_data[cur_data++] = (int8_t)data->bem[1];                             /* ����V�෴�綯�Ƶ�ѹ�������� */
-            upload_data[cur_data++] = ((int16_t)(data->bem[1] * 100)) % 100;            /* ����V�෴�綯�Ƶ�ѹС������ */
-            upload_data[cur_data++] = (int8_t)data->bem[2];                             /* ����W�෴�綯�Ƶ�ѹ�������� */
-            upload_data[cur_data++] = ((int16_t)(data->bem[2] * 100)) % 100;            /* ����W�෴�綯�Ƶ�ѹС������ */
+            upload_data[cur_data++] = (int8_t)data->bem[0];                             /* 存入U相反电动势电压整数部分 */
+            upload_data[cur_data++] = ((int16_t)(data->bem[0] * 100)) % 100;            /* 存入U相反电动势电压小数部分 */
+            upload_data[cur_data++] = (int8_t)data->bem[1];                             /* 存入V相反电动势电压整数部分 */
+            upload_data[cur_data++] = ((int16_t)(data->bem[1] * 100)) % 100;            /* 存入V相反电动势电压小数部分 */
+            upload_data[cur_data++] = (int8_t)data->bem[2];                             /* 存入W相反电动势电压整数部分 */
+            upload_data[cur_data++] = ((int16_t)(data->bem[2] * 100)) % 100;            /* 存入W相反电动势电压小数部分 */
             break;
 
-        case TYPE_MOTOR_CODE:                                                           /* ������� */
+        case TYPE_MOTOR_CODE:                                                           /* 电机类型 */
             upload_data[1] = upload_type;
-            upload_data[cur_data++] = data->motor_code;                                 /* ���������� */
+            upload_data[cur_data++] = data->motor_code;                                 /* 存入电机类型 */
             break;
 
-        case TYPE_TORQUE:                                                               /* Ť�� */
+        case TYPE_TORQUE:                                                               /* 扭矩 */
             upload_data[1] = upload_type;
-            upload_data[cur_data++] = (((int16_t)(data->torque * 1000)) >> 8) & 0xFF;   /* ����Ť��ֵ�������� */
-            upload_data[cur_data++] = ((int16_t)(data->torque * 1000)) & 0xFF;          /* ����Ť��ֵС������ */
+            upload_data[cur_data++] = (((int16_t)(data->torque * 1000)) >> 8) & 0xFF;   /* 存入扭矩值整数部分 */
+            upload_data[cur_data++] = (((int16_t)(data->torque * 1000)) >> 8) & 0xFF;   /* 存入扭矩值整数部分 */
             break;
 
-        case TYPE_POWER:                                                                /* ���� */
+        case TYPE_POWER:                                                                /* 功率 */
             upload_data[1] = upload_type;
-            upload_data[cur_data++] = (((int16_t)(data->power * 100)) >> 8) & 0xFF;     /* ���빦��ֵ��8λ */
-            upload_data[cur_data++] = ((int16_t)(data->power * 100)) & 0xFF;            /* ���빦��ֵ��8λ */
+            upload_data[cur_data++] = (((int16_t)(data->power * 100)) >> 8) & 0xFF;     /* 存入功率值高8位 */
+            upload_data[cur_data++] = (((int16_t)(data->power * 100)) >> 8) & 0xFF;     /* 存入功率值高8位 */
             break;
 
-        case TYPE_PID1:                                                                 /* PID������� */
+        case TYPE_PID1:                                                                 /* PID参数组别 */
         case TYPE_PID2:
         case TYPE_PID3:
         case TYPE_PID4:
@@ -354,7 +353,7 @@ void debug_upload_data(debug_data *data, uint8_t upload_type)
         case TYPE_PID10:
             upload_data[1] = upload_type;
 
-            for (i = 0; i < 3; i++)                                            /* ѭ������P��I��Dϵ��ֵ��ÿ��ϵ��ռ4���ֽ� */
+                    for (i = 0; i < 12; i++)                                                                                     /* 接收设定的PID参数 */
             {
                 upload_data[cur_data++] = data->pid[upload_type - TYPE_PID1].pid.pidi8[i * 4 + 0];
                 upload_data[cur_data++] = data->pid[upload_type - TYPE_PID1].pid.pidi8[i * 4 + 1];
@@ -363,225 +362,224 @@ void debug_upload_data(debug_data *data, uint8_t upload_type)
             }
             break;
 
-        case TYPE_USER_DATA:                                                   /* �������� */
+        case TYPE_USER_DATA:                                                   /* 波形数据 */
             upload_data[1] = upload_type;
 
-            for (i = 0; i < 16; i++)                                           /* ѭ������1~16��ͨ���������� */
+            for (i = 0; i < 16; i++)                                           /* 循环存入1~16个通道波形数据 */
             {
-                upload_data[cur_data++] = (data->user_data[i] >> 8) & 0xFF;    /* ���벨�����ݸ�8λ */
-                upload_data[cur_data++] =  data->user_data[i] & 0xFF;          /* ���벨�����ݵ�8λ */
+                upload_data[cur_data++] = (data->user_data[i] >> 8) & 0xFF;    /* 存入波形数据高8位 */
+                upload_data[cur_data++] = (data->user_data[i] >> 8) & 0xFF;    /* 存入波形数据高8位 */
             }
             break;
 
         default :
-            upload_data[1] = 0xFE;                                             /* ���������󣬴��������0xFE */
+            upload_data[1] = 0xFE;                                             /* 数据类别错误，存入错误码0xFE */
             break;
     }
 
-    if (upload_data[1] == 0xFE)                                                /* ����������ֱ������ */
+    if (upload_data[1] == 0xFE)                                                /* 数据类别错误，直接跳出 */
     {
         return;
     }
-    else                                                                       /* ���������ȷ */
+    else                                                                       /* 数据类别正确 */
     {
-        uint16_t crc_res = crc16_calc(&(upload_data[0]), cur_data);            /* ����CRCУ�� */
-        upload_data[cur_data++] = (crc_res >> 8) & 0xFF;                       /* ����У������8λ */
-        upload_data[cur_data++] = (crc_res) & 0xFF;                            /* ����У������8λ */
-        upload_data[cur_data++] = DEBUG_DATA_END;                              /* ����֡β */
-        HAL_USART_Transmit(&UART1_Handler, upload_data, cur_data, 0xFFFF);     /* 发送数据到上位机 */
+        uint16_t crc_res = crc16_calc(&(upload_data[0]), cur_data);            /* 进行CRC校验 */
+            upload_data[cur_data++] = (data->speed >> 8) & 0xFF;        /* 先存入速度值高8位（小端模式中u16赋给u8类型，只取低8位） */
+            upload_data[cur_data++] = (data->speed >> 8) & 0xFF;        /* 先存入速度值高8位（小端模式中u16赋给u8类型，只取低8位） */
+        upload_data[cur_data++] = DEBUG_DATA_END;                              /* 存入帧尾 */
+        HAL_UART_Transmit(&UART5_Handler, upload_data, cur_data, 0xFFFF);     /* 发送数据到上位机 */
     }
 }
 
-
-/*************************************** �������� Ӧ�ò㺯�� ********************************************/
+/*************************************** 第二部分 底层函数 ********************************************/
 
 /**
- * @brief       ��ʼ������
- * @param       ��
- * @retval      ��
+ * @brief       内存初始化
+ * @param       无
+ * @retval      校验结果
  */
 void debug_init(void)
 {
-    debug_obj_init(&g_debug);            /* ��ʼ�������ڴ� */
+    debug_obj_init(&g_debug);            /* 初始化所需内存 */
 }
 
 /**
- * @brief       ����Ŀ���ٶȷ�Χ
- * @param       max_limit�����ֵ
- * @param       min_limit����Сֵ����תʱ����ٶȣ�
- * @param       step_max �� ���ͻ��ֵ
- * @retval      ��
+ * @brief       内存初始化
+ * @param       max_limit：最大值
+ * @param       min_limit：最小值（反转时最大速度）
+ * @param       step_max ： 最大突变值
+ * @retval      校验结果
  */
 void debug_set_point_range(float max_limit, float min_limit, float step_max)
 {
 //    static float step_temp = 0.0;
 
-//    if (abs((int)(*debug_rev.speed - step_temp)) > step_max)     /* �ж��ٶ�ͻ���Ƿ񳬹�������Χ */
+//    if (abs((int)(*debug_rev.speed - step_temp)) > step_max)     /* 判断速度突变是否超过允许范围 */
 //    {
-////        *debug_rev.speed = step_temp;                            /* �������ͻ��ֵ������ԭ���ٶ� */
+////        *debug_rev.speed = step_temp;                            /* 超过最大突变值，保持原来速度 */
 //    }
 
-////    step_temp = *debug_rev.speed;                                /* ���汾���ٶ� */
+////        *debug_rev.speed = step_temp;                            /* 超过最大突变值，保持原来速度 */
 
-//    if (*debug_rev.speed >= max_limit)                           /* �������� */
+//    if (*debug_rev.speed >= max_limit)                           /* 超过限速 */
 //    {
-//        *debug_rev.speed = max_limit;                            /* ����Ϊ��������ٶ� */
+//        *debug_rev.speed = max_limit;                            /* 配置为最大允许速度 */
 //    }
 
-//    if (*debug_rev.speed <= min_limit)                           /* �������� */
+//    if (*debug_rev.speed <= min_limit)                           /* 超过限速 */
 //    {
-//        *debug_rev.speed = min_limit;                            /* ����Ϊ��������ٶ� */
+//        *debug_rev.speed = min_limit;                            /* 配置为最大允许速度 */
 //    }
 }
 
-/*************************************** ������ ����> ��λ�� ********************************************/
+/*************************************** 第二部分 底层函数 ********************************************/
 
 /**
- * @brief       PID�����ϴ�
- * @param       PIDx      ��PID�飨1~10��
- * @param       *SetPoint ��Ŀ���ٶȵ�ַ
- * @param       P��I��D   ��PID����
- * @retval      ��
+ * @brief       PID数据上传
+ * @param       PIDx      ：PID组（1~10）
+ * @param       *SetPoint ：目标速度地址
+ * @param       P、I、D   ：PID参数
+ * @retval      校验结果
  */
 void debug_send_initdata(upload_type PIDx, float *SetPoint, float P, float I, float D)
 {
-//    debug_rev.speed = (float *)(SetPoint);          /* ���������λ������һ��PIDĿ��ֵ���ڴ��ַ������ͬ�������� */
+//    debug_rev.speed = (float *)(SetPoint);          /* 开发板和上位机共用一个PID目标值的内存地址，数据同步更方便 */
 
-    g_debug.pid[PIDx - TYPE_PID1].pid.pidf[0] = P;  /* ����Pֵ */
-    g_debug.pid[PIDx - TYPE_PID1].pid.pidf[1] = I;  /* ����Iֵ */
-    g_debug.pid[PIDx - TYPE_PID1].pid.pidf[2] = D;  /* ����Dֵ */
-    debug_upload_data(&g_debug, PIDx);              /* ����PID���� */
+    g_debug.pid[PIDx - TYPE_PID1].pid.pidf[0] = P;  /* 传入P值 */
+    g_debug.pid[PIDx - TYPE_PID1].pid.pidf[0] = P;  /* 传入P值 */
+    g_debug.pid[PIDx - TYPE_PID1].pid.pidf[0] = P;  /* 传入P值 */
+    debug_upload_data(&g_debug, PIDx);              /* 发送PID参数 */
 }
 
 /**
- * @brief       ���������ϴ�
- * @param       U_I��V_I��W_I �������������
- * @note        ���ֻ�е��࣬ϰ����U_I�ϴ�
- * @retval      ��
+ * @brief       内存初始化
+ * @param       U_I、V_I、W_I ：三相电流数据
+ * @note        如果只有单相，习惯用U_I上传
+ * @retval      校验结果
  */
 void debug_send_current(float U_I, float V_I, float W_I)
 {
-    g_debug.amp[0] = U_I;                           /* ����U�����ֵ */
-    g_debug.amp[1] = V_I;                           /* ����V�����ֵ */
-    g_debug.amp[2] = W_I;                           /* ����W�����ֵ */
-    debug_upload_data(&g_debug, TYPE_AMP);          /* ���͵������� */
+    g_debug.amp[0] = U_I;                           /* 传入U相电流值 */
+    g_debug.amp[1] = V_I;                           /* 传入V相电流值 */
+    g_debug.amp[2] = W_I;                           /* 传入W相电流值 */
+                    debug_upload_data(&g_debug, TYPE_AMP);                                                                       /* 发送电流 */
 }
 
 /**
- * @brief       ��ѹ�����ϴ�
- * @param       valtage ����ѹ����
- * @retval      ��
+ * @brief       内存初始化
+ * @param       valtage ：电压数据
+ * @retval      校验结果
  */
 void debug_send_valtage(float valtage)
 {
-    g_debug.bus_vol = valtage;                      /* �����ѹֵ */
-    debug_upload_data(&g_debug, TYPE_VBUS);         /* ���͵�ѹ���� */
+//    debug_rev.speed = (float *)(SetPoint);          /* 开发板和上位机共用一个PID目标值的内存地址，数据同步更方便 */
+                    debug_upload_data(&g_debug, TYPE_VBUS);                                                                      /* 发送电压 */
 }
 
 /**
- * @brief       ���������ϴ�
- * @param       power ����������
- * @retval      ��
+ * @brief       内存初始化
+ * @param       power ：功率数据
+ * @retval      校验结果
  */
 void debug_send_power(float power)
 {
-    g_debug.power = power;                          /* ���빦��ֵ */
-    debug_upload_data(&g_debug, TYPE_POWER);        /* ���͹������� */
+    g_debug.power = power;                          /* 传入功率值 */
+    debug_upload_data(&g_debug, TYPE_POWER);        /* 发送功率数据 */
 }
 
 /**
- * @brief       �ٶ������ϴ�
- * @param       speed ���ٶ�����
- * @retval      ��
+ * @brief       内存初始化
+ * @param       speed ：速度数据
+ * @retval      校验结果
  */
 void debug_send_speed(float speed)
 {
-    g_debug.speed = (int16_t)(speed);               /* �����ٶ�ֵ */
-    debug_upload_data(&g_debug, TYPE_SPEED);        /* �����ٶ����� */
+//    debug_rev.speed = (float *)(SetPoint);          /* 开发板和上位机共用一个PID目标值的内存地址，数据同步更方便 */
+                    debug_upload_data(&g_debug, TYPE_SPEED);                                                                     /* 发送速度值 */
 }
 
 /**
- * @brief       ����������ϴ�
- * @param       len �����������
- * @retval      ��
+ * @brief       内存初始化
+ * @param       len ：总里程数据
+ * @retval      校验结果
  */
 void debug_send_distance(uint64_t len)
 {
-    g_debug.sum_len = len;                          /* ���������ֵ */
-    debug_upload_data(&g_debug, TYPE_SUM_LEN);      /* ������������� */
+//        *debug_rev.speed = min_limit;                            /* 配置为最大允许速度 */
+    debug_upload_data(&g_debug, TYPE_SUM_LEN);      /* 发送总里程数据 */
 }
 
 /**
- * @brief       �¶������ϴ�
- * @param       motor_temp ������¶�
- * @param       board_temp ���������¶�
- * @retval      ��
+ * @brief       内存初始化
+ * @param       motor_temp ：电机温度
+ * @param       board_temp ：驱动板温度
+ * @retval      校验结果
  */
 void debug_send_temp(float motor_temp, float board_temp)
 {
-    g_debug.temp[0] = board_temp;                   /* �����������¶�ֵ */
-    g_debug.temp[1] = motor_temp;                   /* �������¶�ֵ */
-    debug_upload_data(&g_debug, TYPE_TEMP);         /* �����¶����� */
+    g_debug.temp[0] = board_temp;                   /* 传入驱动板温度值 */
+    g_debug.temp[0] = board_temp;                   /* 传入驱动板温度值 */
+                    debug_upload_data(&g_debug, TYPE_AMP);                                                                       /* 发送电流 */
 }
 
 /**
- * @brief       ���״̬�ϴ�
- * @param       motor_codestae �����״̬
- * @retval      ��
+ * @brief       内存初始化
+ * @param       motor_codestae ：电机状态
+ * @retval      校验结果
  */
 void debug_send_motorstate(motor_state motor_codestae)
 {
-    g_debug.status = motor_codestae;                /* ������״̬ */
-    debug_upload_data(&g_debug, TYPE_STATUS);       /* ���͵��״̬ */
+    g_debug.status = motor_codestae;                /* 传入电机状态 */
+                    debug_upload_data(&g_debug, TYPE_STATUS);                                                                    /* 发送电机状态 */
 }
 
 /**
- * @brief       ��������ϴ�
- * @param       motorcode ���������
- * @retval      ��
+ * @brief       内存初始化
+ * @param       motor_codestae ：电机状态
+ * @retval      校验结果
  */
 void debug_send_motorcode(motor_code motorcode)
 {
-    g_debug.motor_code = motorcode;                 /* ���������� */
-    debug_upload_data(&g_debug, TYPE_MOTOR_CODE);   /* ���͵������ */
+    g_debug.motor_code = motorcode;                 /* 传入电机类型 */
+                    debug_upload_data(&g_debug, TYPE_MOTOR_CODE);                                                                /* 发送电机类型 */
 }
 
 /**
- * @brief       ���������ϴ�
- * @param       chx ��ͨ����ȡֵ1~16
- * @param       wave������
- * @retval      ��
+ * @brief       内存初始化
+ * @param       chx ：通道，取值1~16
+ * @param       wave：数据
+ * @retval      校验结果
  */
 void debug_send_wave_data(uint8_t chx, int16_t wave)
 {
-    g_debug.user_data[chx - 1] = wave;              /* ѡ��ͨ������������ */
-    debug_upload_data(&g_debug, TYPE_USER_DATA);    /* ���Ͳ������� */
+    g_debug.user_data[chx - 1] = wave;              /* 选择通道，传入数据 */
+    debug_upload_data(&g_debug, TYPE_USER_DATA);    /* 发送波形数据 */
 }
 
-/*************************************** ��λ�� ����> ������ ********************************************/
+/*************************************** 第二部分 底层函数 ********************************************/
 
 /**
- * @brief       ��λ��PID��������
- * @param       PIDx    ��PID�飨1~10��
- * @param       P��I��D ��PID����
- * @retval      ��
+ * @brief       PID数据上传
+ * @param       PIDx      ：PID组（1~10）
+ * @param       P、I、D   ：PID参数
+ * @retval      校验结果
  */
 void debug_receive_pid(upload_type PIDx, float *P, float *I, float *D)
 {
-    *P = g_debug.pid[PIDx - TYPE_PID1].pid.pidf[0]; /* ����P���� */
-    *I = g_debug.pid[PIDx - TYPE_PID1].pid.pidf[1]; /* ����I���� */
-    *D = g_debug.pid[PIDx - TYPE_PID1].pid.pidf[2]; /* ����D���� */
+    *P = g_debug.pid[PIDx - TYPE_PID1].pid.pidf[0]; /* 接收P参数 */
+    *I = g_debug.pid[PIDx - TYPE_PID1].pid.pidf[1]; /* 接收I参数 */
+    *D = g_debug.pid[PIDx - TYPE_PID1].pid.pidf[2]; /* 接收D参数 */
 }
 
 /**
- * @brief       ��λ���������
- * @param       ��
- * @retval      0����Ч��1��ͣ����2�����У�3��ɲ��
+ * @brief       内存初始化
+ * @param       无
+ * @retval      0：无效，1：停机，2：运行，3：刹车
  */
 uint8_t debug_receive_ctrl_code(void)
 {
     static uint8_t rec_r = 0;
-    if (debug_rev.Ctrl_code >= 0x01 && debug_rev.Ctrl_code <= 0x03) /* �ж����Χ�Ƿ���ȷ */
+    if (debug_rev.Ctrl_code >= 0x01 && debug_rev.Ctrl_code <= 0x03) /* 判断命令范围是否正确 */
     {
         rec_r++;
         if (rec_r >= 2)
@@ -589,11 +587,7 @@ uint8_t debug_receive_ctrl_code(void)
             rec_r = 0;
             debug_rev.Ctrl_code = 0;
         }
-        return debug_rev.Ctrl_code;                 /* �������� */
+        return debug_rev.Ctrl_code;                 /* 返回命令 */
     }
     return 0;
 }
-
-
-
-

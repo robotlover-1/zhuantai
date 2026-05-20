@@ -10,17 +10,14 @@
 
 extern TIM_HandleTypeDef g_timx_pwm_chy_handle;
 extern TIM_HandleTypeDef g_timx_encode_chy_handle;
-
 extern float speed_m;	  
 extern float location;	  
 extern int32_t motor_pwm; /* 电机PWM值 */
 extern int32_t pluse_ele;
 
 void step_motor_init(void)
-
 {
 	GPIO_InitTypeDef gpio_init_struct;
-
 	ST1_SHUTDOWN_GPIO_CLK_ENABLE();
 	ST1_ELE_GPIO_CLK_ENABLE();
 	ST1_IO_GPIO_CLK_ENABLE();
@@ -32,32 +29,27 @@ void step_motor_init(void)
 	ST1_HOME_GPIO_CLK_ENABLE();
 	ST1_DONE_GPIO_CLK_ENABLE();
 	ST1_ALARM_GPIO_CLK_ENABLE();
-
 	gpio_init_struct.Pin = ST1_SHUTDOWN_GPIO_PIN; 
 	gpio_init_struct.Mode = GPIO_MODE_OUTPUT_OD;  /* 开漏输出(接24V) */
 	gpio_init_struct.Pull = GPIO_NOPULL;
 	gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;									  
 	HAL_GPIO_Init(ST1_SHUTDOWN_GPIO_PORT, &gpio_init_struct);						  
 	HAL_GPIO_WritePin(ST1_SHUTDOWN_GPIO_PORT, ST1_SHUTDOWN_GPIO_PIN, GPIO_PIN_RESET); 
-
 	gpio_init_struct.Pin = ST1_ELE_GPIO_PIN;			 
 	gpio_init_struct.Mode = GPIO_MODE_INPUT;			 
 	gpio_init_struct.Pull = GPIO_PULLDOWN;				 
 	gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;		 
 	HAL_GPIO_Init(ST1_ELE_GPIO_PORT, &gpio_init_struct); 
-
 	gpio_init_struct.Pin = ST1_HAL1_GPIO_PIN;			  
 	gpio_init_struct.Mode = GPIO_MODE_INPUT;			  
 	gpio_init_struct.Pull = GPIO_PULLDOWN;				  
 	gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;		  
 	HAL_GPIO_Init(ST1_HAL1_GPIO_PORT, &gpio_init_struct); 
-
 	gpio_init_struct.Pin = ST1_HAL2_GPIO_PIN;			  
 	gpio_init_struct.Mode = GPIO_MODE_INPUT;			  
 	gpio_init_struct.Pull = GPIO_PULLDOWN;				  
 	gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;		  
 	HAL_GPIO_Init(ST1_HAL2_GPIO_PORT, &gpio_init_struct); 
-
 	gpio_init_struct.Pin = ST1_HAL3_GPIO_PIN;			  
 	gpio_init_struct.Mode = GPIO_MODE_INPUT;			  
 	gpio_init_struct.Pull = GPIO_NOPULL;				  
@@ -70,30 +62,23 @@ void step_motor_init(void)
 	gpio_init_struct.Pull = GPIO_PULLDOWN;
 	gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;		
 	HAL_GPIO_Init(ST1_IO_GPIO_PORT, &gpio_init_struct); 
-
 	dcmotor_stop(); 
-
-
 	gpio_init_struct.Pin = ST1_IN1_GPIO_PIN | ST1_IN2_GPIO_PIN;
 	gpio_init_struct.Mode = GPIO_MODE_INPUT;
 	gpio_init_struct.Pull = GPIO_PULLDOWN;
 	gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;
 	HAL_GPIO_Init(ST1_IN1_GPIO_PORT, &gpio_init_struct);
-
-	// 平式步进回零完成信号输入(双向光�? PF8
+	// 平式步进回零完成信号输入(双向光耦) PF8
 	gpio_init_struct.Pin = ST1_HOME_GPIO_PIN;
 	gpio_init_struct.Mode = GPIO_MODE_INPUT;
 	gpio_init_struct.Pull = GPIO_PULLDOWN;
 	gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;
 	HAL_GPIO_Init(ST1_HOME_GPIO_PORT, &gpio_init_struct);
-
-	
 	gpio_init_struct.Pin = ST1_DONE_GPIO_PIN;
 	gpio_init_struct.Mode = GPIO_MODE_OUTPUT_PP;  /* 推挽输出(3.3V) */
 	gpio_init_struct.Pull = GPIO_NOPULL;
 	gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;
 	HAL_GPIO_Init(ST1_DONE_GPIO_PORT, &gpio_init_struct);
-
 	gpio_init_struct.Pin = ST1_ALARM_GPIO_PIN;
 	gpio_init_struct.Mode = GPIO_MODE_OUTPUT_PP;  /* 推挽输出(3.3V) */
 	gpio_init_struct.Pull = GPIO_NOPULL;
@@ -117,7 +102,6 @@ extern int station_x;
 extern int error;
 extern int DIR;	  
 extern int start; 
-
 extern u8 time_out;
 extern TIM_HandleTypeDef TIM5_Handler; 
 extern int32_t Encode_now;
@@ -130,7 +114,9 @@ extern float SetPoint_P;
 extern float SetPoint_C; 
 extern int duzhuan_flag;
 float SetPluse;
+
 extern int alarm;						 
+
 void step_motor_motion(int num, int dir) 
 {
 	int hal_x = 0;
@@ -141,6 +127,7 @@ void step_motor_motion(int num, int dir)
 		printf("电机初始化失败!\r\n");
 		return;
 	}
+
 	if (hal_x == 1 || hal_x == 2 || hal_x == 3 || hal_x == 4 || hal_x == 5)
 	{
 		printf("当前位置:%d\r\n", hal_x);
@@ -168,7 +155,6 @@ void step_motor_motion(int num, int dir)
 							SetPluse = Encode_now - SetPoint_C;
 							motor_stop_normal();
 							delay_ms(500);
-
 							if (Encode_now > SetPoint_C + 1000)
 								error = 0;
 							else
@@ -178,6 +164,7 @@ void step_motor_motion(int num, int dir)
 								printf("光电检测异常!\r\n");
 								alarm_pulse();
 							}
+
 							break;
 						}
 					}
@@ -198,6 +185,7 @@ void step_motor_motion(int num, int dir)
 					if (error == 1) { motor_safe_stop(); error = 1; break; }
 					if (check_24v_loss()) break;
 				}
+
 				if (error == 1) return;
 
 				/* 光电到达后验证工位 */
@@ -209,8 +197,10 @@ void step_motor_motion(int num, int dir)
 					hal_y = read_hal();
 					handle_station_verify(hal_x, hal_y);
 				}
+
 				else
 				{
+
 					/* 堵转到达但光电未触发，需调整 */
 					if (Encode_now < SetPoint_P - 300)
 					{
@@ -231,11 +221,13 @@ void step_motor_motion(int num, int dir)
 									break;
 								}
 							}
+
 							if (check_motion_timeout(5, "运行超时!")) break;
 							if (error == 1) { motor_safe_stop(); error = 1; break; }
 							if (check_24v_loss()) break;
 						}
 					}
+
 					else if (Encode_now > SetPoint_P + 300)
 					{
 						printf("当前位置:%d\r\n", Encode_now);
@@ -252,13 +244,14 @@ void step_motor_motion(int num, int dir)
 								motor_stop_normal();
 								break;
 							}
+
 							if (check_motion_timeout(6, "运行超时!")) break;
 							if (error == 1) { motor_safe_stop(); error = 1; break; }
 							if (check_24v_loss()) break;
 						}
 					}
-					if (error == 1) return;
 
+					if (error == 1) return;
 					delay_ms(500);
 					if (ele_is_triggered())
 					{
@@ -269,6 +262,7 @@ void step_motor_motion(int num, int dir)
 						hal_y = read_hal();
 						handle_station_verify(hal_x, hal_y);
 					}
+
 					else
 					{
 						error = 1;
@@ -278,6 +272,7 @@ void step_motor_motion(int num, int dir)
 					}
 				}
 			}
+
 			else if (dir == 1)  /* 反转 */
 			{
 				DIR = 1;
@@ -296,7 +291,6 @@ void step_motor_motion(int num, int dir)
 							SetPluse = Encode_now - SetPoint_C;
 							motor_stop_normal();
 							delay_ms(500);
-
 							if (Encode_now < SetPoint_C - 1000)
 								error = 0;
 							else
@@ -306,6 +300,7 @@ void step_motor_motion(int num, int dir)
 								printf("光电检测异常!\r\n");
 								alarm_pulse();
 							}
+
 							break;
 						}
 					}
@@ -326,6 +321,7 @@ void step_motor_motion(int num, int dir)
 					if (error == 1) { motor_safe_stop(); error = 1; break; }
 					if (check_24v_loss()) break;
 				}
+
 				if (error == 1) return;
 
 				/* 光电到达后验证工位 */
@@ -337,8 +333,10 @@ void step_motor_motion(int num, int dir)
 					hal_y = read_hal();
 					handle_station_verify(hal_x, hal_y);
 				}
+
 				else
 				{
+
 					/* 堵转到达但光电未触发，需调整 */
 					if (Encode_now > SetPoint_P + 300)
 					{
@@ -359,11 +357,13 @@ void step_motor_motion(int num, int dir)
 									break;
 								}
 							}
+
 							if (check_motion_timeout(5, "运行超时!")) break;
 							if (error == 1) { motor_safe_stop(); error = 1; break; }
 							if (check_24v_loss()) break;
 						}
 					}
+
 					else if (Encode_now < SetPoint_P - 300)
 					{
 						printf("当前位置:%d\r\n", Encode_now);
@@ -380,13 +380,14 @@ void step_motor_motion(int num, int dir)
 								motor_stop_normal();
 								break;
 							}
+
 							if (check_motion_timeout(6, "运行超时!")) break;
 							if (error == 1) { motor_safe_stop(); error = 1; break; }
 							if (check_24v_loss()) break;
 						}
 					}
-					if (error == 1) return;
 
+					if (error == 1) return;
 					delay_ms(500);
 					if (ele_is_triggered())
 					{
@@ -397,6 +398,7 @@ void step_motor_motion(int num, int dir)
 						hal_y = read_hal();
 						handle_station_verify(hal_x, hal_y);
 					}
+
 					else
 					{
 						printf_flag = 0;
@@ -408,6 +410,7 @@ void step_motor_motion(int num, int dir)
 				}
 			}
 		}
+
 		else
 		{
 			printf("光电异常,工位检测失败!\r\n");
@@ -425,6 +428,7 @@ void motor_init(void)
 			printf("电机初始化中,请稍候!\r\n");
 			return;
 		}
+
 		else if (error == 0)
 		{
 			if (run_printf_flag == 0) 
@@ -434,6 +438,7 @@ void motor_init(void)
 				delay_ms(20);
 				while (1) 
 				{
+
 				/* 找光电下降沿: 从不在孔内(1)变为在孔内(0) */
 					if (HAL_GPIO_ReadPin(ST1_ELE_GPIO_PORT, ST1_ELE_GPIO_PIN) == 1)
 					{
@@ -445,11 +450,12 @@ void motor_init(void)
 							break;
 						}
 					}
+
 					if (error == 1) break;
 					if (check_24v_loss()) break;
 				}
-				if (error == 1) return;
 
+				if (error == 1) return;
 				delay_ms(300);
 				if (ele_is_triggered())
 				{
@@ -457,8 +463,10 @@ void motor_init(void)
 					run_flag = 0;
 					run_printf_flag = 0;
 				}
+
 				else
 				{
+
 					/* 第一次未找到, 再试一次 */
 					motor_start_motion();
 					run_flag = 2;
@@ -471,11 +479,12 @@ void motor_init(void)
 							motor_stop_normal();
 							break;
 						}
+
 						if (error == 1) break;
 						if (check_24v_loss()) break;
 					}
-					if (error == 1) return;
 
+					if (error == 1) return;
 					delay_ms(300);
 					if (ele_is_triggered())
 					{
@@ -483,6 +492,7 @@ void motor_init(void)
 						run_flag = 0;
 						run_printf_flag = 0;
 					}
+
 					else
 					{
 						error = 1;
@@ -496,6 +506,7 @@ void motor_init(void)
 			}
 		}
 	}
+
 	else if (HAL_GPIO_ReadPin(ST1_ELE_GPIO_PORT, ST1_ELE_GPIO_PIN) == 1)
 	{
 		printf_flag = 1;
@@ -535,6 +546,7 @@ static int read_single_hal(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin, int weight)
  * @note        霍尔信号组合: HAL1(weight=1) + HAL2(weight=2) + HAL3(weight=4)
  *              7->5映射, 其他无效值返回-1
  */
+
 int read_hal(void)
 {
     int hal = 0;
@@ -549,7 +561,6 @@ int read_hal(void)
         alarm_pulse();
         return -1;
     }
-
     /* 最多重试2次读取霍尔 */
     for (retry = 0; retry < 2; retry++)
     {
@@ -557,7 +568,6 @@ int read_hal(void)
         hal += read_single_hal(ST1_HAL1_GPIO_PORT, ST1_HAL1_GPIO_PIN, 1);
         hal += read_single_hal(ST1_HAL2_GPIO_PORT, ST1_HAL2_GPIO_PIN, 2);
         hal += read_single_hal(ST1_HAL3_GPIO_PORT, ST1_HAL3_GPIO_PIN, 4);
-
         /* 映射表: 实测权重 -> 工位号
          *   权重2 (0,1,0) → 工位1
          *   权重4 (0,0,1) → 工位2
@@ -576,12 +586,9 @@ int read_hal(void)
 			case 1: return 5;
             //case 7: return 5;
         }
-        
-
         /* 无效值，延时后重试 */
         delay_ms(50);
     }
-
     /* 重试2次仍无效 */
     alarm = 2;
     printf("霍尔读取错误:%d\r\n", hal);
@@ -590,8 +597,10 @@ int read_hal(void)
 }
 
 extern int DIR;								 
+
 int dir_jud(int target_num, int current_num) 
 {
+
     /* 5站圆形排列，计算正转步数(递增方向) */
     int fwd = (target_num - current_num + 5) % 5;
     if (fwd <= 2) {
@@ -602,6 +611,7 @@ int dir_jud(int target_num, int current_num)
         return 1;
     }
 }
+
 void step_motor_LX(int target_num, int dir)
 {
 	int i = 0;
@@ -613,6 +623,7 @@ void step_motor_LX(int target_num, int dir)
 		{
 			break;
 		}
+
 		if (error == 0)
 		{
 			step_motor_motion(1, dir);
@@ -623,6 +634,7 @@ void step_motor_LX(int target_num, int dir)
 					break;
 				}
 			}
+
 			delay_ms(50);
 			station_x = read_hal();
 			if (target_num == station_x) 
@@ -630,6 +642,7 @@ void step_motor_LX(int target_num, int dir)
 				break;
 			}
 		}
+
 		else
 		{
 			printf("堵转超时!\r\n");
@@ -648,8 +661,10 @@ void dcmotor_start(void)
  * @param       无
  * @retval      无
  */
+
 void dcmotor_stop(void)
 {
+
     /* 先设0%，再停通道，最后关闭主输出 */
 	/* Start两个通道设0%，确保引脚被主动拉低而非悬浮 */
     HAL_TIM_PWM_Start(&g_timx_pwm_chy_handle, TIM_CHANNEL_1);
@@ -664,8 +679,10 @@ void dcmotor_stop(void)
  * @brief       设置电机方向
  * @param       para: 方向 0=正转(PA8 CH1) 1=反转(PA11 CH4)
  */
+
 void dcmotor_dir(uint8_t para)
 {
+
     /* 两个通道都Start确保引脚被主动驱动 */
     HAL_TIM_PWM_Start(&g_timx_pwm_chy_handle, TIM_CHANNEL_1);
     HAL_TIM_PWM_Start(&g_timx_pwm_chy_handle, TIM_CHANNEL_4);
@@ -679,6 +696,7 @@ void dcmotor_dir(uint8_t para)
  * @note        正数正转,负数反转,PWM值为绝对值
  * @retval      无
  */
+
 void motor_pwm_set(int32_t para)
 {
     if (para >= 0)
@@ -686,6 +704,7 @@ void motor_pwm_set(int32_t para)
         __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle, TIM_CHANNEL_1, para);
         __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle, TIM_CHANNEL_4, 0);
     }
+
     else if (para < 0)
     {
         para = -para;
@@ -693,20 +712,17 @@ void motor_pwm_set(int32_t para)
         __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle, TIM_CHANNEL_4, para);
     }
 }
-
 /*************************************    编码器测速    速度计算    ****************************************************/
-
-
 ENCODE_TypeDef g_encode; 
 
 extern float speed_m;
+
 void speed_computer(int32_t encode_now, uint8_t ms)
 {
 	uint8_t i = 0, j = 0;
 	float temp = 0.0;
 	static uint8_t sp_count = 0, k = 0;
 	static float speed_arr[10] = {0.0}; 
-
 	if (sp_count == ms) 
 	{
 		/* 速度计算说明
@@ -717,13 +733,9 @@ void speed_computer(int32_t encode_now, uint8_t ms)
 		 */
 		g_encode.encode_now = encode_now;							  
 		g_encode.speed = (g_encode.encode_now - g_encode.encode_old); 
-
-		
 		speed_arr[k++] = g_encode.speed;
 		speed_m = g_encode.speed;
 		g_encode.encode_old = g_encode.encode_now; 
-
-		
 		if (k == 10)
 		{
 			for (i = 10; i >= 1; i--) 
@@ -740,14 +752,12 @@ void speed_computer(int32_t encode_now, uint8_t ms)
 			}
 
 			temp = 0.0;
-
 			for (i = 2; i < 8; i++) 
 			{
 				temp += speed_arr[i]; 
 			}
 
 			temp = (float)(temp / 6); 
-
 			/* 一阶低通滤波
 			 * 公式:Y(n)= qX(n) + (1-q)Y(n-1)
 			 * 其中X(n)为本次采样值,Y(n-1)为上次滤波输出,Y(n)为本次滤波输出,q为滤波系数
@@ -759,5 +769,6 @@ void speed_computer(int32_t encode_now, uint8_t ms)
 
 		sp_count = 0;
 	}
+
 	sp_count++;
 }

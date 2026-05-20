@@ -23,6 +23,7 @@ static const uint32_t g_flash_sectors[] = {
  * @param       addr: Flash绝对地址
  * @retval      扇区编号 0~11，非法地址返回 -1
  */
+
 static int stmflash_get_sector(uint32_t addr)
 {
     for (int i = 0; i < 11; i++)
@@ -30,6 +31,7 @@ static int stmflash_get_sector(uint32_t addr)
         if (addr >= g_flash_sectors[i] && addr < g_flash_sectors[i + 1])
             return i;
     }
+
     if (addr >= g_flash_sectors[11] && addr < (STM32_FLASH_BASE + STM32_FLASH_SIZE * 1024))
         return 11;
     return -1;
@@ -40,26 +42,25 @@ static int stmflash_get_sector(uint32_t addr)
  * @param       sector: 扇区编号 (0~11)
  * @retval      0=成功, 非0=失败
  */
+
 static int __attribute__((unused)) stmflash_erase_sector(uint32_t sector)
 {
     FLASH_EraseInitTypeDef f = {0};
     uint32_t SectorError = 0;
-
     f.TypeErase = FLASH_TYPEERASE_SECTORS;
     f.Sector = sector;
     f.NbSectors = 1;
     f.VoltageRange = FLASH_VOLTAGE_RANGE_3;
-
     HAL_FLASH_Unlock();
     HAL_FLASHEx_Erase(&f, &SectorError);
     HAL_FLASH_Lock();
-
     return SectorError;
 }
 
 /**
  * @brief       读取指定地址的半字(16位)
  */
+
 u16 STMFLASH_ReadHalfWord(u32 faddr)
 {
     return *(vu16 *)faddr;
@@ -70,6 +71,7 @@ u16 STMFLASH_ReadHalfWord(u32 faddr)
 /**
  * @brief       不检查写入（直接编程半字）
  */
+
 void STMFLASH_Write_NoCheck(u32 WriteAddr, u16 *pBuffer, u16 NumToWrite)
 {
     u16 i;
@@ -86,18 +88,16 @@ void STMFLASH_Write_NoCheck(u32 WriteAddr, u16 *pBuffer, u16 NumToWrite)
  * @param       pBuffer: 数据指针
  * @param       NumToWrite: 半字(16位)数量
  */
+
 void STMFLASH_Write(u32 WriteAddr, u16 *pBuffer, u16 NumToWrite)
 {
     int sector;
-
     if (WriteAddr < STM32_FLASH_BASE ||
         (WriteAddr >= (STM32_FLASH_BASE + STM32_FLASH_SIZE * 1024)))
         return;
-
     sector = stmflash_get_sector(WriteAddr);
     if (sector < 0)
         return;
-
     HAL_FLASH_Unlock();
 
     /* 擦除目标扇区 */
@@ -129,6 +129,7 @@ void STMFLASH_Write(u32 WriteAddr, u16 *pBuffer, u16 NumToWrite)
 /**
  * @brief       从指定地址读取指定数量的半字
  */
+
 void STMFLASH_Read(u32 ReadAddr, u16 *pBuffer, u16 NumToRead)
 {
     u16 i;
@@ -142,20 +143,8 @@ void STMFLASH_Read(u32 ReadAddr, u16 *pBuffer, u16 NumToRead)
 /**
  * @brief       测试写入一个半字
  */
+
 void Test_Write(u32 WriteAddr, u16 WriteData)
 {
     STMFLASH_Write(WriteAddr, &WriteData, 1);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-

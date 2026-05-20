@@ -1,262 +1,220 @@
 #include "delay.h"
 #include "sys.h"
 ////////////////////////////////////////////////////////////////////////////////// 	 
-//�����Ҫʹ��OS,����������ͷ�ļ�����. 
+//如果需要使用OS,则包括下面的头文件即可. 
 #if SYSTEM_SUPPORT_OS
-#include "includes.h"					//ucos ʹ��	  
+#include "includes.h"					//ucos 使用	  
 #endif
 //////////////////////////////////////////////////////////////////////////////////	 
-//������ֻ��ѧϰʹ�ã�δ���������ɣ��������������κ���;
-//ALIENTEK STM32������
-//ʹ��SysTick����ͨ����ģʽ���ӳٽ��й������ʺ�STM32F10xϵ�У�
-//����delay_us,delay_ms
-//����ԭ��@ALIENTEK
-//������̳:www.openedv.com
-//��������:2019/9/17
-//�汾��V1.8
-//��Ȩ���У�����ؾ���
-//Copyright(C) �������������ӿƼ����޹�˾ 2009-2019
+//本程序只供学习使用，未经作者许可，不得用于其它任何用途
+//ALIENTEK STM32开发板
+//使用SysTick的普通计数模式对延迟进行管理（适合STM32F10x系列）
+//包括delay_us,delay_ms
+//正点原子@ALIENTEK
+//技术论坛:www.openedv.com
+//创建日期:2019/9/17
+//V1.2修改说明
+//修正了中断中调用出现死循环的错误
+//Copyright(C) 广州市星翼电子科技有限公司 2009-2019
 //All rights reserved
 //********************************************************************************
-//V1.2�޸�˵��
-//�������ж��е��ó�����ѭ���Ĵ���
-//��ֹ��ʱ��׼ȷ,����do while�ṹ!
-//V1.3�޸�˵��
-//�����˶�UCOSII��ʱ��֧��.
-//���ʹ��ucosII,delay_init���Զ�����SYSTICK��ֵ,ʹ֮��ucos��TICKS_PER_SEC��Ӧ.
-//delay_ms��delay_usҲ���������ucos�ĸ���.
-//delay_us������ucos��ʹ��,����׼ȷ�Ⱥܸ�,����Ҫ����û��ռ�ö���Ķ�ʱ��.
-//delay_ms��ucos��,���Ե���OSTimeDly����,��δ����ucosʱ,������delay_usʵ��,�Ӷ�׼ȷ��ʱ
-//����������ʼ������,��������ucos֮��delay_ms������ʱ�ĳ���,ѡ��OSTimeDlyʵ�ֻ���delay_usʵ��.
-//V1.4�޸�˵�� 20110929
-//�޸���ʹ��ucos,����ucosδ������ʱ��,delay_ms���ж��޷���Ӧ��bug.
-//V1.5�޸�˵�� 20120902
-//��delay_us����ucos��������ֹ����ucos���delay_us��ִ�У����ܵ��µ���ʱ��׼��
-//V1.6�޸�˵�� 20150109
-//��delay_ms����OSLockNesting�жϡ�
-//V1.7�޸�˵�� 20150319
-//�޸�OS֧�ַ�ʽ,��֧������OS(������UCOSII��UCOSIII,����������OS������֧��)
-//����:delay_osrunning/delay_ostickspersec/delay_osintnesting�����궨��
-//����:delay_osschedlock/delay_osschedunlock/delay_ostimedly��������
-//V1.8�޸�˵�� 20150519
-//����UCOSIII֧��ʱ��2��bug��
-//delay_tickspersec��Ϊ��delay_ostickspersec
-//delay_intnesting��Ϊ��delay_osintnesting
+//V1.2修改说明
+//修正了中断中调用出现死循环的错误
+//防止延时不准确,采用do while结构!
+//V1.3修改说明
+//增加了对UCOSII延时的支持.
+//如果使用ucosII,delay_init会自动设置SYSTICK的值,使之与ucos的TICKS_PER_SEC对应.
+//delay_ms和delay_us也进行了针对ucos的改造.
+//如果使用ucosII,delay_init会自动设置SYSTICK的值,使之与ucos的TICKS_PER_SEC对应.
+//delay_ms在ucos下,可以当成OSTimeDly来用,在未启动ucos时,它采用delay_us实现,从而准确延时
+//可以用来初始化外设,在启动了ucos之后delay_ms根据延时的长短,选择OSTimeDly实现或者delay_us实现.
+//V1.4修改说明 20110929
+//修改了使用ucos,但是ucos未启动的时候,delay_ms中中断无法响应的bug.
+//V1.5修改说明 20120902
+//如果使用ucosII,delay_init会自动设置SYSTICK的值,使之与ucos的TICKS_PER_SEC对应.
+//V1.6修改说明 20150109
+//在delay_ms加入OSLockNesting判断。
+//V1.7修改说明 20150319
+//修改OS支持方式,以支持任意OS(不限于UCOSII和UCOSIII,理论上任意OS都可以支持)
+//添加:delay_osrunning/delay_ostickspersec/delay_osintnesting三个宏定义
+//添加:delay_osschedlock/delay_osschedunlock/delay_ostimedly三个函数
+//V1.8修改说明 20150519
+//修正UCOSIII支持时的2个bug：
+//添加:delay_osrunning/delay_ostickspersec/delay_osintnesting三个宏定义
+//在delay_ms加入OSLockNesting判断。
 //////////////////////////////////////////////////////////////////////////////////  
 
-static u32 fac_us=0;							//us��ʱ������
+static u32 fac_us=0;							//us延时倍乘数
 
 #if SYSTEM_SUPPORT_OS		
-    static u16 fac_ms=0;				        //ms��ʱ������,��os��,����ÿ�����ĵ�ms��
+    static u16 fac_ms=0;				        //ms延时倍乘数,在os下,代表每个节拍的ms数
 #endif
 	
-#if SYSTEM_SUPPORT_OS							//���SYSTEM_SUPPORT_OS������,˵��Ҫ֧��OS��(������UCOS).
-//��delay_us/delay_ms��Ҫ֧��OS��ʱ����Ҫ������OS��صĺ궨��ͺ�����֧��
-//������3���궨��:
-//    delay_osrunning:���ڱ�ʾOS��ǰ�Ƿ���������,�Ծ����Ƿ����ʹ����غ���
-//delay_ostickspersec:���ڱ�ʾOS�趨��ʱ�ӽ���,delay_init�����������������ʼ��systick
-// delay_osintnesting:���ڱ�ʾOS�ж�Ƕ�׼���,��Ϊ�ж����治���Ե���,delay_msʹ�øò����������������
-//Ȼ����3������:
-//  delay_osschedlock:��������OS�������,��ֹ����
-//delay_osschedunlock:���ڽ���OS�������,���¿�������
-//    delay_ostimedly:����OS��ʱ,���������������.
+#if SYSTEM_SUPPORT_OS							//如果SYSTEM_SUPPORT_OS定义了,说明要支持OS了(不限于UCOS).
+//delay_ms在ucos下,可以当成OSTimeDly来用,在未启动ucos时,它采用delay_us实现,从而准确延时
+//首先是3个宏定义:
+//    delay_osrunning:用于表示OS当前是否正在运行,以决定是否可以使用相关函数
+//delay_ostickspersec:用于表示OS设定的时钟节拍,delay_init将根据这个参数来初始哈systick
+// delay_osintnesting:用于表示OS中断嵌套级别,因为中断里面不可以调度,delay_ms使用该参数来决定如何运行
+//首先是3个宏定义:
+//  delay_osschedlock:用于锁定OS任务调度,禁止调度
+//delay_osschedunlock:用于解锁OS任务调度,重新开启调度
+//    delay_ostimedly:用于OS延时,可以引起任务调度.
 
-//�����̽���UCOSII��UCOSIII��֧��,����OS,�����вο�����ֲ
-//֧��UCOSII
-#ifdef 	OS_CRITICAL_METHOD						//OS_CRITICAL_METHOD������,˵��Ҫ֧��UCOSII				
-#define delay_osrunning		OSRunning			//OS�Ƿ����б��,0,������;1,������
-#define delay_ostickspersec	OS_TICKS_PER_SEC	//OSʱ�ӽ���,��ÿ����ȴ���
-#define delay_osintnesting 	OSIntNesting		//�ж�Ƕ�׼���,���ж�Ƕ�״���
+//本例程仅作UCOSII和UCOSIII的支持,其他OS,请自行参考着移植
+//支持UCOSII
+#ifdef 	OS_CRITICAL_METHOD						//OS_CRITICAL_METHOD定义了,说明要支持UCOSII				
+#define delay_osrunning		OSRunning			//OS是否运行标记,0,不运行;1,在运行
+#define delay_ostickspersec	OS_TICKS_PER_SEC	//OS时钟节拍,即每秒调度次数
+#define delay_osintnesting 	OSIntNesting		//中断嵌套级别,即中断嵌套次数
 #endif
 
-//֧��UCOSIII
-#ifdef 	CPU_CFG_CRITICAL_METHOD					//CPU_CFG_CRITICAL_METHOD������,˵��Ҫ֧��UCOSIII	
-#define delay_osrunning		OSRunning			//OS�Ƿ����б��,0,������;1,������
-#define delay_ostickspersec	OSCfg_TickRate_Hz	//OSʱ�ӽ���,��ÿ����ȴ���
-#define delay_osintnesting 	OSIntNestingCtr		//�ж�Ƕ�׼���,���ж�Ƕ�״���
+//支持UCOSIII
+#ifdef 	CPU_CFG_CRITICAL_METHOD					//CPU_CFG_CRITICAL_METHOD定义了,说明要支持UCOSIII	
+#define delay_osrunning		OSRunning			//OS是否运行标记,0,不运行;1,在运行
+#define delay_ostickspersec	OSCfg_TickRate_Hz	//OS时钟节拍,即每秒调度次数
+#define delay_osintnesting 	OSIntNestingCtr		//中断嵌套级别,即中断嵌套次数
 #endif
 
-
-//us����ʱʱ,�ر��������(��ֹ���us���ӳ�)
+//us级延时时,关闭任务调度(防止打断us级延迟)
 void delay_osschedlock(void)
 {
-#ifdef CPU_CFG_CRITICAL_METHOD   				//ʹ��UCOSIII
+#ifdef 	CPU_CFG_CRITICAL_METHOD					//CPU_CFG_CRITICAL_METHOD定义了,说明要支持UCOSIII	
 	OS_ERR err; 
-	OSSchedLock(&err);							//UCOSIII�ķ�ʽ,��ֹ���ȣ���ֹ���us��ʱ
-#else											//����UCOSII
-	OSSchedLock();								//UCOSII�ķ�ʽ,��ֹ���ȣ���ֹ���us��ʱ
+	OSSchedLock(&err);							//UCOSIII的方式,禁止调度，防止打断us延时
+#else											//否则UCOSII
+	OSSchedLock(&err);							//UCOSIII的方式,禁止调度，防止打断us延时
 #endif
 }
 
-//us����ʱʱ,�ָ��������
+//us级延时时,恢复任务调度
 void delay_osschedunlock(void)
 {	
-#ifdef CPU_CFG_CRITICAL_METHOD   				//ʹ��UCOSIII
+#ifdef 	CPU_CFG_CRITICAL_METHOD					//CPU_CFG_CRITICAL_METHOD定义了,说明要支持UCOSIII	
 	OS_ERR err; 
-	OSSchedUnlock(&err);						//UCOSIII�ķ�ʽ,�ָ�����
-#else											//����UCOSII
-	OSSchedUnlock();							//UCOSII�ķ�ʽ,�ָ�����
+	OSSchedUnlock(&err);						//UCOSIII的方式,恢复调度
+#else											//否则UCOSII
+	OSSchedUnlock(&err);						//UCOSIII的方式,恢复调度
 #endif
 }
 
-//����OS�Դ�����ʱ������ʱ
-//ticks:��ʱ�Ľ�����
+//调用OS自带的延时函数延时
+//ticks:延时的节拍数
 void delay_ostimedly(u32 ticks)
 {
 #ifdef CPU_CFG_CRITICAL_METHOD
 	OS_ERR err; 
-	OSTimeDly(ticks,OS_OPT_TIME_PERIODIC,&err);	//UCOSIII��ʱ��������ģʽ
+	OSTimeDly(ticks,OS_OPT_TIME_PERIODIC,&err);	//UCOSIII延时采用周期模式
 #else
-	OSTimeDly(ticks);							//UCOSII��ʱ
+	OSTimeDly(ticks,OS_OPT_TIME_PERIODIC,&err);	//UCOSIII延时采用周期模式
 #endif 
 }
  
-//systick�жϷ�����,ʹ��ucosʱ�õ�
+//systick中断服务函数,使用ucos时用到
 void SysTick_Handler(void)
 {	
-	if(delay_osrunning==1)						//OS��ʼ����,��ִ�������ĵ��ȴ���
+	if(delay_osrunning==1)						//OS开始跑了,才执行正常的调度处理
 	{
-		OSIntEnter();							//�����ж�
-		OSTimeTick();       					//����ucos��ʱ�ӷ������               
-		OSIntExit();       	 					//���������л����ж�
+		OSIntEnter();							//进入中断
+		OSTimeTick();       					//调用ucos的时钟服务程序               
+		OSIntExit();       	 					//触发任务切换软中断
 	}
 }
 #endif
 
-			   
-//��ʼ���ӳٺ���
-//��ʹ��ucos��ʱ��,�˺������ʼ��ucos��ʱ�ӽ���
-//SYSTICK��ʱ�ӹ̶�ΪAHBʱ��
-//SYSCLK:ϵͳʱ��Ƶ��
+//修正了中断中调用出现死循环的错误
+//当使用ucos的时候,此函数会初始化ucos的时钟节拍
+//SYSTICK的时钟固定为AHB时钟
+//SYSCLK:系统时钟频率
 void delay_init(u8 SYSCLK)
 {
-#if SYSTEM_SUPPORT_OS 						//�����Ҫ֧��OS.
+#if SYSTEM_SUPPORT_OS							//如果SYSTEM_SUPPORT_OS定义了,说明要支持OS了(不限于UCOS).
 	u32 reload;
 #endif
-    HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);//SysTickƵ��ΪHCLK
+    HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);//SysTick频率为HCLK
     fac_us=SYSCLK;
-#if SYSTEM_SUPPORT_OS 						//�����Ҫ֧��OS.
-	reload=SYSCLK;					    //ÿ���ӵļ������� ��λΪK	   
-	reload*=1000000/delay_ostickspersec;	//����delay_ostickspersec�趨���ʱ��
-											//reloadΪ24λ�Ĵ���,���ֵ:16777216,��72M��,Լ��0.233s����	
-	fac_ms=1000/delay_ostickspersec;		//����OS������ʱ�����ٵ�λ	   
-	SysTick->CTRL|=SysTick_CTRL_TICKINT_Msk;//����SYSTICK�ж�
-	SysTick->LOAD=reload; 					//ÿ1/OS_TICKS_PER_SEC���ж�һ��	
-	SysTick->CTRL|=SysTick_CTRL_ENABLE_Msk; //����SYSTICK
+#if SYSTEM_SUPPORT_OS							//如果SYSTEM_SUPPORT_OS定义了,说明要支持OS了(不限于UCOS).
+	reload=SYSCLK;					    //每秒钟的计数次数 单位为K	   
+	reload*=1000000/delay_ostickspersec;	//根据delay_ostickspersec设定溢出时间
+											//reload为24位寄存器,最大值:16777216,在72M下,约合0.233s左右	
+	fac_ms=1000/delay_ostickspersec;		//代表OS可以延时的最少单位	   
+	SysTick->CTRL|=SysTick_CTRL_TICKINT_Msk;//开启SYSTICK中断
+	SysTick->LOAD=reload; 					//每1/OS_TICKS_PER_SEC秒中断一次	
+	SysTick->CTRL|=SysTick_CTRL_ENABLE_Msk; //开启SYSTICK
 #else
 #endif
 }								    
 
-#if SYSTEM_SUPPORT_OS 						//�����Ҫ֧��OS.
-//��ʱnus
-//nus:Ҫ��ʱ��us��.	
-//nus:0~190887435(���ֵ��2^32/fac_us@fac_us=22.5)	    								   
+#if SYSTEM_SUPPORT_OS							//如果SYSTEM_SUPPORT_OS定义了,说明要支持OS了(不限于UCOS).
+//延时nus
+//nus:要延时的us数.	
+//nus:0~190887435(最大值即2^32/fac_us@fac_us=22.5)	    								   
 void delay_us(u32 nus)
 {		
 	u32 ticks;
 	u32 told,tnow,tcnt=0;
-	u32 reload=SysTick->LOAD;				//LOAD��ֵ	    	 
-	ticks=nus*fac_us; 						//��Ҫ�Ľ����� 
-	delay_osschedlock();					//��ֹOS���ȣ���ֹ���us��ʱ
-	told=SysTick->VAL;        				//�ս���ʱ�ļ�����ֵ
+	u32 reload=SysTick->LOAD;				//LOAD的值	    	 
+	ticks=nus*fac_us; 						//需要的节拍数 
+	delay_osschedlock();					//阻止OS调度，防止打断us延时
+	told=SysTick->VAL;        				//刚进入时的计数器值
 	while(1)
 	{
 		tnow=SysTick->VAL;	
 		if(tnow!=told)
 		{	    
-			if(tnow<told)tcnt+=told-tnow;	//����ע��һ��SYSTICK��һ���ݼ��ļ������Ϳ�����.
+			if(tnow<told)tcnt+=told-tnow;	//这里注意一下SYSTICK是一个递减的计数器就可以了.
 			else tcnt+=reload-tnow+told;	    
 			told=tnow;
-			if(tcnt>=ticks)break;			//ʱ�䳬��/����Ҫ�ӳٵ�ʱ��,���˳�.
+			if(tcnt>=ticks)break;			//时间超过/等于要延迟的时间,则退出.
 		}  
 	};
-	delay_osschedunlock();					//�ָ�OS����											    
+	delay_osschedunlock();					//恢复OS调度											    
 }  
-//��ʱnms
-//nms:Ҫ��ʱ��ms��
+//延时nms
+//nms:要延时的ms数
 //nms:0~65535
 void delay_ms(u16 nms)
 {	
-	if(delay_osrunning&&delay_osintnesting==0)//���OS�Ѿ�������,���Ҳ������ж�����(�ж����治���������)	    
+	if(delay_osrunning&&delay_osintnesting==0)//如果OS已经在跑了,并且不是在中断里面(中断里面不能任务调度)	    
 	{		 
-		if(nms>=fac_ms)						//��ʱ��ʱ�����OS������ʱ������ 
+		if(nms>=fac_ms)						//延时的时间大于OS的最少时间周期 
 		{ 
-   			delay_ostimedly(nms/fac_ms);	//OS��ʱ
+   			delay_ostimedly(nms/fac_ms);	//OS延时
 		}
-		nms%=fac_ms;						//OS�Ѿ��޷��ṩ��ôС����ʱ��,������ͨ��ʽ��ʱ    
+		nms%=fac_ms;						//OS已经无法提供这么小的延时了,采用普通方式延时    
 	}
-	delay_us((u32)(nms*1000));				//��ͨ��ʽ��ʱ
+	delay_us((u32)(nms*1000));				//普通方式延时
 }
-#else  //����ucosʱ
+#else  //不用ucos时
 
-//��ʱnus
-//nusΪҪ��ʱ��us��.	
-//nus:0~190887435(���ֵ��2^32/fac_us@fac_us=22.5)	 
+//延时nus
+//nus为要延时的us数.	
+//nus:0~190887435(最大值即2^32/fac_us@fac_us=22.5)	    								   
 void delay_us(u32 nus)
 {		
 	u32 ticks;
 	u32 told,tnow,tcnt=0;
-	u32 reload=SysTick->LOAD;				//LOAD��ֵ	    	 
-	ticks=nus*fac_us; 						//��Ҫ�Ľ����� 
-	told=SysTick->VAL;        				//�ս���ʱ�ļ�����ֵ
+	u32 reload=SysTick->LOAD;				//LOAD的值	    	 
+	ticks=nus*fac_us; 						//需要的节拍数 
+	told=SysTick->VAL;        				//刚进入时的计数器值
 	while(1)
 	{
 		tnow=SysTick->VAL;	
 		if(tnow!=told)
 		{	    
-			if(tnow<told)tcnt+=told-tnow;	//����ע��һ��SYSTICK��һ���ݼ��ļ������Ϳ�����.
+			if(tnow<told)tcnt+=told-tnow;	//这里注意一下SYSTICK是一个递减的计数器就可以了.
 			else tcnt+=reload-tnow+told;	    
 			told=tnow;
-			if(tcnt>=ticks)break;			//ʱ�䳬��/����Ҫ�ӳٵ�ʱ��,���˳�.
+			if(tcnt>=ticks)break;			//时间超过/等于要延迟的时间,则退出.
 		}  
 	};
 }
 
-//��ʱnms
-//nms:Ҫ��ʱ��ms��
+//延时nms
+//nms:要延时的ms数
 void delay_ms(u16 nms)
 {
 	u32 i;
 	for(i=0;i<nms;i++) delay_us(1000);
 }
 #endif
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

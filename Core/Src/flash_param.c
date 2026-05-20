@@ -120,6 +120,5 @@ void param_save_all(void)
     /* 锁定Flash */
     HAL_FLASH_Lock();
 
-
     printf("所有参数已保存到Flash\r\n");
 }

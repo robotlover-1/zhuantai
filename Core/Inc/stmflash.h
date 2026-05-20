@@ -6,6 +6,7 @@
  */
 #ifndef __STMFLASH_H__
 #define __STMFLASH_H__
+
 #include "sys.h"
 
 /******************************************************************************************/
@@ -20,25 +21,10 @@
 /******************************************************************************************/
 /* 外部接口 */
 u16 STMFLASH_ReadHalfWord(u32 faddr);
+
 void STMFLASH_Write(u32 WriteAddr, u16 *pBuffer, u16 NumToWrite);
+
 void STMFLASH_Read(u32 ReadAddr, u16 *pBuffer, u16 NumToRead);
+
 void Test_Write(u32 WriteAddr, u16 WriteData);
-
 #endif
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

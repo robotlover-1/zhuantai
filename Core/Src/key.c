@@ -1,7 +1,6 @@
 #include "key.h"
 #include "delay.h"
 
-
 //按键初始化函数
 void KEY_Init(void)
 {
