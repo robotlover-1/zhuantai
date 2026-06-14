@@ -1,4 +1,4 @@
-/**
+﻿/**
  ****************************************************************************************************
  * @file        flash_param.c
  * @brief       F407 Flash 参数存储管理实现
@@ -8,6 +8,7 @@
 #include "flash_param.h"
 #include "delay.h"
 #include "usart.h"
+#include "pid.h"
 
 /******************************************************************************************/
 /* 外部变量声明 */
@@ -18,6 +19,13 @@ extern int time_c;
 extern int32_t pulse_low;
 extern int32_t pluse_ele;
 extern int32_t writeFlashData;
+extern float g_pid_kp;
+extern float g_pid_ki;
+extern float g_pid_kd;
+extern float g_pid_skp;
+extern float g_pid_ski;
+extern float g_pid_skd;
+extern int   g_pid_period_ms;
 
 /******************************************************************************************/
 /* 公共实现 */
@@ -65,7 +73,7 @@ void param_load_all(void)
     if (val >= 0 && val <= 20000)
         pulse_low = val;
     else
-        pulse_low = 14000;
+        pulse_low = 20000;
     printf("进孔脉冲数S: %d\r\n", pulse_low);
     //printf("S: %d\r\n", pulse_low);
 
@@ -78,6 +86,76 @@ void param_load_all(void)
         pluse_ele = 38000;
     printf("光电脉冲限制E: %d\r\n", pluse_ele);
     //printf("E: %d\r\n", pluse_ele);
+
+    /* PID 位置环 KP (×1000) */
+    {
+        int32_t raw = PARAM_READ(PARAM_OFFSET_PID_KP);
+        if (raw >= 0 && raw <= 1000)
+            g_pid_kp = raw * 0.001f;
+        else
+            g_pid_kp = KP;
+    }
+    printf("位置环KP: %.3f\r\n", g_pid_kp);
+
+    /* PID 位置环 KI (×1000) */
+    {
+        int32_t raw = PARAM_READ(PARAM_OFFSET_PID_KI);
+        if (raw >= 0 && raw <= 1000)
+            g_pid_ki = raw * 0.001f;
+        else
+            g_pid_ki = KI;
+    }
+    printf("位置环KI: %.3f\r\n", g_pid_ki);
+
+    /* PID 位置环 KD (×1000) */
+    {
+        int32_t raw = PARAM_READ(PARAM_OFFSET_PID_KD);
+        if (raw >= 0 && raw <= 1000)
+            g_pid_kd = raw * 0.001f;
+        else
+            g_pid_kd = KD;
+    }
+    printf("位置环KD: %.3f\r\n", g_pid_kd);
+
+    /* PID 速度环 S_KP (×100) */
+    {
+        int32_t raw = PARAM_READ(PARAM_OFFSET_PID_SKP);
+        if (raw >= 0 && raw <= 5000)
+            g_pid_skp = raw * 0.01f;
+        else
+            g_pid_skp = S_KP;
+    }
+    printf("速度环S_KP: %.2f\r\n", g_pid_skp);
+
+    /* PID 速度环 S_KI (×100) */
+    {
+        int32_t raw = PARAM_READ(PARAM_OFFSET_PID_SKI);
+        if (raw >= 0 && raw <= 5000)
+            g_pid_ski = raw * 0.01f;
+        else
+            g_pid_ski = S_KI;
+    }
+    printf("速度环S_KI: %.2f\r\n", g_pid_ski);
+
+    /* PID 速度环 S_KD (×100) */
+    {
+        int32_t raw = PARAM_READ(PARAM_OFFSET_PID_SKD);
+        if (raw >= 0 && raw <= 5000)
+            g_pid_skd = raw * 0.01f;
+        else
+            g_pid_skd = S_KD;
+    }
+    printf("速度环S_KD: %.2f\r\n", g_pid_skd);
+
+    /* PID采样周期 */
+    {
+        int32_t raw = PARAM_READ(PARAM_OFFSET_PID_PERIOD);
+        if (raw >= 5 && raw <= 100)
+            g_pid_period_ms = (int)raw;
+        else
+            g_pid_period_ms = SMAPLSE_PID_SPEED;
+    }
+    printf("PID采样周期: %dms\r\n", g_pid_period_ms);
 
     /* 更新标志 */
     writeFlashData = PARAM_READ(PARAM_OFFSET_UPDATE);
@@ -116,6 +194,22 @@ void param_save_all(void)
                       PARAM_SECTOR_BASE + PARAM_OFFSET_PLUSE_ELE, (uint32_t)pluse_ele);
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
                       PARAM_SECTOR_BASE + PARAM_OFFSET_UPDATE, 0);
+
+    /* 保存PID参数（整数化存储，避免float直接写Flash） */
+    HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+                      PARAM_SECTOR_BASE + PARAM_OFFSET_PID_KP,  (uint32_t)(g_pid_kp  * 1000.0f + 0.5f));
+    HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+                      PARAM_SECTOR_BASE + PARAM_OFFSET_PID_KI,  (uint32_t)(g_pid_ki  * 1000.0f + 0.5f));
+    HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+                      PARAM_SECTOR_BASE + PARAM_OFFSET_PID_KD,  (uint32_t)(g_pid_kd  * 1000.0f + 0.5f));
+    HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+                      PARAM_SECTOR_BASE + PARAM_OFFSET_PID_SKP, (uint32_t)(g_pid_skp * 100.0f + 0.5f));
+    HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+                      PARAM_SECTOR_BASE + PARAM_OFFSET_PID_SKI, (uint32_t)(g_pid_ski * 100.0f + 0.5f));
+    HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+                      PARAM_SECTOR_BASE + PARAM_OFFSET_PID_SKD, (uint32_t)(g_pid_skd * 100.0f + 0.5f));
+    HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+                      PARAM_SECTOR_BASE + PARAM_OFFSET_PID_PERIOD, (uint32_t)g_pid_period_ms);
 
     /* 锁定Flash */
     HAL_FLASH_Lock();

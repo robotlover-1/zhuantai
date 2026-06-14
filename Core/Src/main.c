@@ -34,6 +34,7 @@
 #include "flash_param.h"
 #include "exti.h"
 #include "cmd_handler.h"
+#include "rtc.h"
 
 /************************************************/
 /************************************************/
@@ -92,6 +93,7 @@ int loop2 = 0;
 int PhotoPos = 1;
 int32_t addr;
 int32_t writeFlashData;
+int dbg_print_ms = 0;                   /* 调试打印间隔(ms), 0=关闭 */
 
 /* USER CODE END Includes */
 /* Private typedef -----------------------------------------------------------*/
@@ -136,8 +138,9 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-    Stm32_Clock_Init();                
-    delay_init(168);                   
+    Stm32_Clock_Init();
+    delay_init(168);
+    rtc_init();                          /* 初始化RTC(从编译时间设初始值) */                   
     uart4_init(9600);                  
     USART_RX_STA = 0;                    /* 清除上电噪声导致的误接收 */
     for (i = 0; i < USART_REC_LEN; i++) USART_RX_BUF[i] = 0;
@@ -215,7 +218,6 @@ int main(void)
             //     UART5->DR = USART_RX_BUF[i];
             // }
             //printf("\r\n");
-            printf("before cmd_dispatch\r\n");
             printf("USART_RX_BUF: %s\r\n", USART_RX_BUF);
             cmd_dispatch(USART_RX_BUF, len);
             for (i = 0; i < len; i++)
@@ -244,24 +246,6 @@ int main(void)
         in2_last = in2_now;
         if (printf_flag == 1)
         {
-            if (run_printf_flag == 0)
-            {
-                station_x = read_hal();
-                if (station_x == 7) station_x = 5;
-                USART_TX_BUF[0] = 'P';
-                USART_TX_BUF[1] = station_x + '0';
-                for (i = 0; i < 2; i++) {
-                    uint32_t timeout = 500000;
-                    while (!(UART5->SR & USART_SR_TC)) {
-                        if (--timeout == 0) break;
-                    }
-
-                    UART5->DR = USART_TX_BUF[i];
-                }
-
-                printf("\r\n");
-            }
-
             printf_flag = 0;
         }
     }

@@ -1,4 +1,4 @@
-#include "atim.h"
+﻿#include "atim.h"
 #include "step_motor.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -203,12 +203,17 @@ extern float SetPoint_P;
 extern float SetPoint_S;
 extern float speed_m;
 extern float location;
+extern float ActualValue_S;      /* 速度环累加输出，run_flag切换时需复位 */
+extern float LastError_S;
+extern float PrevError_S;
+extern int   g_pid_period_ms;    /* PID采样周期(ms), 运行时可调 */
 extern int32_t motor_pwm;
 extern int32_t force;
 extern int32_t force_F;
 extern int error;
 float location_last = 0;
 int k_loop = 0;
+volatile uint32_t g_tick_ms = 0;   /* 系统滴答时钟(ms) */
 extern int time_c;
 extern int duzhuan_flag;
 extern u8 run_printf_flag;
@@ -217,9 +222,10 @@ extern int32_t pulse_low;
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-    static uint8_t val = 0;
+    static uint8_t _pid_cnt = 0;
     if (htim->Instance == TIM6)
     {
+        g_tick_ms++;                         /* 1ms递增系统滴答 */
         Encode_now = gtim_get_encode();
         speed_computer(Encode_now, 5);
         location = Encode_now;
@@ -231,6 +237,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
                 if (Encode_now >= SetPoint_P - pulse_low)
                 {
                     run_flag = 2;
+                    //ActualValue_S = 0;  /* 复位速度环，从零开始重新积累 */
+                    //LastError_S = 0;
+                    //PrevError_S = 0;
                 }
             }
             else if (DIR == 1)
@@ -238,11 +247,15 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
                 if (Encode_now <= SetPoint_P + pulse_low)
                 {
                     run_flag = 3;
+                    //ActualValue_S = 0;
+                    //LastError_S = 0;
+                    //PrevError_S = 0;
                 }
             }
         }
-        if (val % SMAPLSE_PID_SPEED == 0)
+        if (++_pid_cnt >= (uint8_t)g_pid_period_ms)
         {
+            _pid_cnt = 0;
             k_loop++;
             //printf("k_loop%d\r\n", k_loop);        /* ISR中严禁printf */
             if (run_flag == 1)
@@ -290,9 +303,23 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
                     motor_pwm = -force_F;
                 motor_pwm_set(motor_pwm);
             }
-            val = 0;
+
+            /* 调试打印: DP命令设置间隔(ms), 仅在运动中(run_flag!=0)输出 */
+            {
+                extern int dbg_print_ms;
+                if (dbg_print_ms > 0 && run_flag != 0)
+                {
+                    static uint32_t _dbg_tick = 0;
+                    if ((g_tick_ms - _dbg_tick) >= (uint32_t)dbg_print_ms)
+                    {
+                        _dbg_tick = g_tick_ms;
+                        printf("DBG|rf=%d|pwm=%d|SpdS=%d|spd=%.0f|enc=%d\r\n",
+                               run_flag, (int)motor_pwm, (int)SetPoint_S, speed_m, (int)Encode_now);
+                    }
+                }
+            }
+
         }
-        val++;
     }
     else if (htim->Instance == TIM5)
     {

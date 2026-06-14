@@ -1,4 +1,4 @@
-/**
+﻿/**
  ****************************************************************************************************
  * @file        app_util.c
  * @brief       应用层通用工具函数实现
@@ -11,6 +11,7 @@
 #include "atim.h"
 #include "delay.h"
 #include "pid.h"
+#include "rtc.h"
 
 /******************************************************************************************/
 /* 外部变量声明 */
@@ -309,9 +310,11 @@ int check_station_valid(int hal_start, int hal_end)
  */
 void handle_station_verify(int hal_start, int hal_end)
 {
+    //printf("hal_start=%d, hal_end=%d\r\n", hal_start, hal_end);
     if (check_station_valid(hal_start, hal_end))
     {
-        printf("P%d\r\n", hal_end);
+        char ts[32]; rtc_get_time_str(ts, sizeof(ts));
+        printf("[%s] 已经运动到位置:%d\r\n", ts, hal_end);
         done_pulse();
     }
     else
@@ -320,4 +323,5 @@ void handle_station_verify(int hal_start, int hal_end)
         printf("工位验证失败!\r\n");
         alarm_pulse();
     }
+    return;
 }

@@ -1,4 +1,4 @@
---cpu Cortex-M4
+--cpu=Cortex-M4 --fpu=SoftVFP
 "test\startup_stm32f407xx.o"
 "test\system_stm32f4xx.o"
 "test\main.o"
@@ -36,7 +36,8 @@
 "test\sys.o"
 "test\usart.o"
 "test\usart2.o"
+"test\rtc.o"
 --strict --scatter "test\test.sct"
---summary_stderr --info summarysizes --map --xref --callgraph --symbols
+--summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
 --info sizes --info totals --info unused --info veneers
 --list "test.map" -o test\test.axf

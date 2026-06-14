@@ -1,4 +1,4 @@
-/**
+﻿/**
  ****************************************************************************************************
  * @file        flash_param.h
  * @brief       F407 Flash 参数存储管理
@@ -24,6 +24,13 @@
 #define PARAM_OFFSET_PULSE_LOW      0x0C    /* 进孔脉冲数 */
 #define PARAM_OFFSET_PLUSE_ELE      0x10    /* 光电脉冲检测限制 */
 #define PARAM_OFFSET_UPDATE         0x14    /* 参数更新标志 */
+#define PARAM_OFFSET_PID_KP         0x18    /* 位置环 KP (×1000) */
+#define PARAM_OFFSET_PID_KI         0x1C    /* 位置环 KI (×1000) */
+#define PARAM_OFFSET_PID_KD         0x20    /* 位置环 KD (×1000) */
+#define PARAM_OFFSET_PID_SKP        0x24    /* 速度环 S_KP (×100) */
+#define PARAM_OFFSET_PID_SKI        0x28    /* 速度环 S_KI (×100) */
+#define PARAM_OFFSET_PID_SKD        0x2C    /* 速度环 S_KD (×100) */
+#define PARAM_OFFSET_PID_PERIOD     0x30    /* PID采样周期(ms) */
 
 /* 从Flash指定偏移读取一个32位值 */
 #define PARAM_READ(offset)          (*(__IO uint32_t *)(PARAM_SECTOR_BASE + (offset)))

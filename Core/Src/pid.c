@@ -4,6 +4,15 @@
 PID_TypeDef  g_location_pid;           /* 速度环PID参数结构体 */
 PID_TypeDef  g_speed_pid;                /* 速度环PID参数结构体 */
 
+/* 运行时PID增益（可通过串口指令调整，Flash持久化） */
+float g_pid_kp  = KP;                   /* 位置环 P 增益 */
+float g_pid_ki  = KI;                   /* 位置环 I 增益 */
+float g_pid_kd  = KD;                   /* 位置环 D 增益 */
+float g_pid_skp = S_KP;                 /* 速度环 P 增益 */
+float g_pid_ski = S_KI;                 /* 速度环 I 增益 */
+float g_pid_skd = S_KD;                 /* 速度环 D 增益 */
+int   g_pid_period_ms = SMAPLSE_PID_SPEED; /* PID采样周期(ms) */
+
 /**
  * @brief       pid初始化
  * @param       无
@@ -34,18 +43,18 @@ void pid_init(void)
   // SetPoint_S=0;            /* 设定目标 */
    ActualValue_S=0;         /* 期望输出值 */
    SumError_S=0;            /* 误差累计 */
-   Proportion_S=S_KP;          /* 比例常数 P */
-   Integral_S=S_KI;            /* 积分常数 I */
-   Derivative_S=S_KD;          /* 微分常数 D */
+   Proportion_S=g_pid_skp;  /* 比例常数 P (运行时可调) */
+   Integral_S=g_pid_ski;    /* 积分常数 I (运行时可调) */
+   Derivative_S=g_pid_skd;  /* 微分常数 D (运行时可调) */
    Error_S=0;               /* Error[1] */
    LastError_S=0;           /* Error[-1] */
    PrevError_S=0;           /* Error[-2] */
   // SetPoint_S=0;            /* 设定目标 */
    ActualValue_P=0;         /* 期望输出值 */
    SumError_P=0;            /* 误差累计 */
-   Proportion_P=KP;          /* 比例常数 P */
-   Integral_P=KI;            /* 积分常数 I */
-   Derivative_P=KD;          /* 微分常数 D */
+   Proportion_P=g_pid_kp;   /* 比例常数 P (运行时可调) */
+   Integral_P=g_pid_ki;     /* 积分常数 I (运行时可调) */
+   Derivative_P=g_pid_kd;   /* 微分常数 D (运行时可调) */
    Error_P=0;               /* Error[1] */
    LastError_P=0;           /* Error[-1] */
    PrevError_P=0;           /* Error[-2] */

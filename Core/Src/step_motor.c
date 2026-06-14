@@ -154,9 +154,11 @@ void step_motor_motion(int num, int dir)
 							Ring = 0;
 							SetPluse = Encode_now - SetPoint_C;
 							motor_stop_normal();
+							//printf("运行完成!\r\n");
 							delay_ms(500);
-							if (Encode_now > SetPoint_C + 1000)
+							if (Encode_now > SetPoint_C + 1000){
 								error = 0;
+							}
 							else
 							{
 								error = 1;
@@ -164,7 +166,7 @@ void step_motor_motion(int num, int dir)
 								printf("光电检测异常!\r\n");
 								alarm_pulse();
 							}
-
+							//printf("before break\r\n");
 							break;
 						}
 					}
@@ -174,14 +176,14 @@ void step_motor_motion(int num, int dir)
 						motor_safe_stop();
 						error = 1;
 						alarm = 10;
-						printf("堵转超时!\r\n");
+						printf("过孔超限!（已运动过孔位，光电未检测到）\r\n");
 						SetPluse = Encode_now - SetPoint_C;
-						printf("脉冲数2:%f\r\n", SetPluse);
+						printf("已运动脉冲数:%f\r\n", SetPluse);
 						alarm_pulse();
 						break;
 					}
 
-					if (check_motion_timeout(4, "电机超限!")) break;
+					if (check_motion_timeout(4, "运行超时!（电机未在时限内到达）")) break;
 					if (error == 1) { motor_safe_stop(); error = 1; break; }
 					if (check_24v_loss()) break;
 				}
@@ -195,13 +197,15 @@ void step_motor_motion(int num, int dir)
 					run_flag = 0;
 					run_printf_flag = 0;
 					hal_y = read_hal();
+					//printf("hal_y=%d\r\n", hal_y);
 					handle_station_verify(hal_x, hal_y);
+					//printf("verify done\r\n");
 				}
 
 				else
 				{
 
-					/* 堵转到达但光电未触发，需调整 */
+					/* 过孔到达但光电未触发，需调整 */
 					if (Encode_now < SetPoint_P - 300)
 					{
 						printf("当前位置:%d\r\n", Encode_now);
@@ -310,14 +314,14 @@ void step_motor_motion(int num, int dir)
 						motor_safe_stop();
 						error = 1;
 						alarm = 10;
-						printf("反转堵转超时!\r\n");
+						printf("反转过孔超限!（已运动过孔位，光电未检测到）\r\n");
 						SetPluse = Encode_now - SetPoint_C;
-						printf("脉冲数3:%f\r\n", SetPluse);
+						printf("已运动脉冲数:%f\r\n", SetPluse);
 						alarm_pulse();
 						break;
 					}
 
-					if (check_motion_timeout(4, "电机超限!")) break;
+					if (check_motion_timeout(4, "运行超时!（电机未在时限内到达）")) break;
 					if (error == 1) { motor_safe_stop(); error = 1; break; }
 					if (check_24v_loss()) break;
 				}
@@ -337,7 +341,7 @@ void step_motor_motion(int num, int dir)
 				else
 				{
 
-					/* 堵转到达但光电未触发，需调整 */
+					/* 过孔到达但光电未触发，需调整 */
 					if (Encode_now > SetPoint_P + 300)
 					{
 						printf("当前位置:%d\r\n", Encode_now);
@@ -417,6 +421,7 @@ void step_motor_motion(int num, int dir)
 			alarm_pulse();
 		} 
 	}
+	return;
 }
 
 void motor_init(void)
@@ -627,6 +632,7 @@ void step_motor_LX(int target_num, int dir)
 		if (error == 0)
 		{
 			step_motor_motion(1, dir);
+			//printf("run_printf_flag=%d\r\n", run_printf_flag);
 			while (1)
 			{
 				if (run_printf_flag == 0)
@@ -637,15 +643,17 @@ void step_motor_LX(int target_num, int dir)
 
 			delay_ms(50);
 			station_x = read_hal();
+			printf("运行到工位:%d\r\n", station_x);
 			if (target_num == station_x) 
 			{
+				printf("运行完成!\r\n");
 				break;
 			}
 		}
 
 		else
 		{
-			printf("堵转超时!\r\n");
+			printf("运动失败! alarm=%d\r\n", alarm);
 			break;
 		}
 	}

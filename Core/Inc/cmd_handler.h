@@ -1,4 +1,4 @@
-/**
+﻿/**
  ****************************************************************************************************
  * @file        cmd_handler.h
  * @brief       串口命令处理函数声明
@@ -25,6 +25,14 @@ void cmd_set_pulse_low(u8 *buf, int len);/* S: 慢速进孔脉冲数 */
 void cmd_set_photo_pos(u8 *buf, int len);/* P: 拍照孔位 */
 
 void cmd_set_pluse_ele(u8 *buf, int len);/* E: 光电检测限制脉冲数 */
+
+void cmd_set_kp(u8 *buf, int len);       /* KP: 位置环P增益 (×1000) */
+void cmd_set_ki(u8 *buf, int len);       /* KI: 位置环I增益 (×1000) */
+void cmd_set_kd(u8 *buf, int len);       /* KD: 位置环D增益 (×1000) */
+void cmd_set_skp(u8 *buf, int len);      /* SK: 速度环P增益 (×100) */
+void cmd_set_ski(u8 *buf, int len);      /* SI: 速度环I增益 (×100) */
+void cmd_set_skd(u8 *buf, int len);      /* SD: 速度环D增益 (×100) */
+void cmd_set_pc(u8 *buf, int len);       /* PC: PID采样周期(ms) */
 
 /* 命令处理函数 - 控制类 */
 void cmd_ele_test(void);                 /* ELE: 光电信号检测 */

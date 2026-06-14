@@ -120,6 +120,90 @@ void cmd_set_pluse_ele(u8 *buf, int len) /* E: 光电检测限制脉冲数 */
     param_save_all();
 }
 
+void cmd_set_kp(u8 *buf, int len) /* KP: 位置环P增益 (整数×1000, 如 KP:30 = 0.030) */
+{
+    extern float g_pid_kp;
+    int raw = 0;
+    sscanf((char *)buf, "KP:%d", &raw);
+    if (raw < 0) raw = 0;
+    if (raw > 1000) raw = 1000;
+    g_pid_kp = raw * 0.001f;
+    printf("位置环KP: %.3f\r\n", g_pid_kp);
+    param_save_all();
+}
+
+void cmd_set_ki(u8 *buf, int len) /* KI: 位置环I增益 (整数×1000) */
+{
+    extern float g_pid_ki;
+    int raw = 0;
+    sscanf((char *)buf, "KI:%d", &raw);
+    if (raw < 0) raw = 0;
+    if (raw > 1000) raw = 1000;
+    g_pid_ki = raw * 0.001f;
+    printf("位置环KI: %.3f\r\n", g_pid_ki);
+    param_save_all();
+}
+
+void cmd_set_kd(u8 *buf, int len) /* KD: 位置环D增益 (整数×1000) */
+{
+    extern float g_pid_kd;
+    int raw = 0;
+    sscanf((char *)buf, "KD:%d", &raw);
+    if (raw < 0) raw = 0;
+    if (raw > 1000) raw = 1000;
+    g_pid_kd = raw * 0.001f;
+    printf("位置环KD: %.3f\r\n", g_pid_kd);
+    param_save_all();
+}
+
+void cmd_set_skp(u8 *buf, int len) /* SK: 速度环P增益 (整数×100, 如 SK:350 = 3.50) */
+{
+    extern float g_pid_skp;
+    int raw = 0;
+    sscanf((char *)buf, "SK:%d", &raw);
+    if (raw < 0) raw = 0;
+    if (raw > 5000) raw = 5000;
+    g_pid_skp = raw * 0.01f;
+    printf("速度环S_KP: %.2f\r\n", g_pid_skp);
+    param_save_all();
+}
+
+void cmd_set_ski(u8 *buf, int len) /* SI: 速度环I增益 (整数×100) */
+{
+    extern float g_pid_ski;
+    int raw = 0;
+    sscanf((char *)buf, "SI:%d", &raw);
+    if (raw < 0) raw = 0;
+    if (raw > 5000) raw = 5000;
+    g_pid_ski = raw * 0.01f;
+    printf("速度环S_KI: %.2f\r\n", g_pid_ski);
+    param_save_all();
+}
+
+void cmd_set_skd(u8 *buf, int len) /* SD: 速度环D增益 (整数×100) */
+{
+    extern float g_pid_skd;
+    int raw = 0;
+    sscanf((char *)buf, "SD:%d", &raw);
+    if (raw < 0) raw = 0;
+    if (raw > 5000) raw = 5000;
+    g_pid_skd = raw * 0.01f;
+    printf("速度环S_KD: %.2f\r\n", g_pid_skd);
+    param_save_all();
+}
+
+void cmd_set_pc(u8 *buf, int len) /* PC: PID采样周期(ms) */
+{
+    extern int g_pid_period_ms;
+    int raw = 0;
+    sscanf((char *)buf, "PC:%d", &raw);
+    if (raw < 5) raw = 5;
+    if (raw > 100) raw = 100;
+    g_pid_period_ms = raw;
+    printf("PID采样周期: %dms\r\n", g_pid_period_ms);
+    param_save_all();
+}
+
 /******************************************************************************************/
 /* 控制类命令*/
 /******************************************************************************************/
@@ -288,6 +372,13 @@ void cmd_res(void) /* RES: 串口更新程序 */
 
 void cmd_show_params(void) /* PARA: 显示所有参数 */
 {
+    extern float g_pid_kp;
+    extern float g_pid_ki;
+    extern float g_pid_kd;
+    extern float g_pid_skp;
+    extern float g_pid_ski;
+    extern float g_pid_skd;
+    extern int   g_pid_period_ms;
     printf("====== 当前参数 ======\r\n");
     printf("F(最大速度): %d\r\n", force);
     printf("R(最大占空比): %d\r\n", force_F);
@@ -297,6 +388,10 @@ void cmd_show_params(void) /* PARA: 显示所有参数 */
     printf("P(拍照孔位): %d\r\n", PhotoPos);
     printf("T(大循环次数): %d\r\n", loop1);
     printf("H(小循环次数): %d\r\n", loop2);
+    printf("--- PID参数 ---\r\n");
+    printf("PC(采样周期): %dms\r\n", g_pid_period_ms);
+    printf("KP(位置环P): %.3f  KI: %.3f  KD: %.3f\r\n", g_pid_kp, g_pid_ki, g_pid_kd);
+    printf("SK(速度环P): %.2f  SI: %.2f  SD: %.2f\r\n", g_pid_skp, g_pid_ski, g_pid_skd);
     printf("====================\r\n");
     printf("Alarm: %d  Error: %d\r\n", alarm, error);
     printf("Encode: %d  RunFlag: %d\r\n", Encode_now, run_flag);
@@ -531,6 +626,20 @@ void cmd_dbg_dump(void) /* DUMP: 打印采集的数据(CSV格式) */
     printf("=== DBG END ===\n");
 }
 
+void cmd_dp(u8 *buf, int len) /* DP: 定时打印PID状态 (ms) */
+{
+    extern int dbg_print_ms;
+    int raw = 0;
+    sscanf((char *)buf, "DP:%d", &raw);
+    if (raw < 0) raw = 0;
+    if (raw > 10000) raw = 10000;
+    dbg_print_ms = raw;
+    if (dbg_print_ms > 0)
+        printf("调试打印: 每%dms输出一次 PID状态 (DP:0 关闭)\r\n", dbg_print_ms);
+    else
+        printf("调试打印: 已关闭\r\n");
+}
+
 /******************************************************************************************/
 /* 命令分发函数 */
 /******************************************************************************************/
@@ -598,6 +707,49 @@ int cmd_dispatch(u8 *buf, int len)
     {
         //printf("E:%.*s\r\n", len, buf);
         cmd_set_pluse_ele(buf, len);
+        return 1;
+    }
+
+    /* PID参数设置类 (KP/KI/KD 整数×1000, SK/SI/SD 整数×100) */
+    if (buf[0] == 'K' && buf[1] == 'P' && buf[2] == ':')    /* KP: 位置环P增益 */
+    {
+        cmd_set_kp(buf, len);
+        return 1;
+    }
+
+    if (buf[0] == 'K' && buf[1] == 'I' && buf[2] == ':')    /* KI: 位置环I增益 */
+    {
+        cmd_set_ki(buf, len);
+        return 1;
+    }
+
+    if (buf[0] == 'K' && buf[1] == 'D' && buf[2] == ':')    /* KD: 位置环D增益 */
+    {
+        cmd_set_kd(buf, len);
+        return 1;
+    }
+
+    if (buf[0] == 'S' && buf[1] == 'K' && buf[2] == ':')    /* SK: 速度环P增益 */
+    {
+        cmd_set_skp(buf, len);
+        return 1;
+    }
+
+    if (buf[0] == 'S' && buf[1] == 'I' && buf[2] == ':')    /* SI: 速度环I增益 */
+    {
+        cmd_set_ski(buf, len);
+        return 1;
+    }
+
+    if (buf[0] == 'S' && buf[1] == 'D' && buf[2] == ':')    /* SD: 速度环D增益 */
+    {
+        cmd_set_skd(buf, len);
+        return 1;
+    }
+
+    if (buf[0] == 'P' && buf[1] == 'C' && buf[2] == ':')    /* PC: PID采样周期 */
+    {
+        cmd_set_pc(buf, len);
         return 1;
     }
 
@@ -784,6 +936,12 @@ int cmd_dispatch(u8 *buf, int len)
     if (buf[0] == 'D' && buf[1] == 'U' && buf[2] == 'M' && buf[3] == 'P')
     {
         cmd_dbg_dump();
+        return 1;
+    }
+
+    if (buf[0] == 'D' && buf[1] == 'P' && buf[2] == ':')    /* DP: 定时打印PID状态 */
+    {
+        cmd_dp(buf, len);
         return 1;
     }
 

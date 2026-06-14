@@ -13,6 +13,9 @@
 // Copyright(C) 广州市星翼电子科技有限公司 2009-2019
 // All rights reserved
 ////////////////////////////////////////////////////////////////////////////////// 	 
+
+/* 系统滴答时钟(ms)，在TIM6中断中递增 */
+extern volatile uint32_t g_tick_ms; 
 //0,不支持ucos
 //1,支持ucos
 #define SYSTEM_SUPPORT_OS		0		// 定义系统是否使用UCOS

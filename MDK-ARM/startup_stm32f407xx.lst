@@ -842,18 +842,17 @@ ARM Macro Assembler    Page 13
               00000200 
               00000000 
 Command Line: --debug --xref --diag_suppress=9931 --cpu=Cortex-M4 --apcs=interw
-ork --depend=test\startup_stm32f407xx.d -otest\startup_stm32f407xx.o -IC:\Users
+ork --depend=test\startup_stm32f407xx.d -otest\startup_stm32f407xx.o -I.\RTE\_t
 
 
 
 ARM Macro Assembler    Page 14 
 
 
-\28935\Desktop\Test_1\new\MDK-ARM\RTE -IC:\Keil_v5\ARM\PACK\ARM\CMSIS\4.3.0\CMS
-IS\Include -IC:\Keil_v5\ARM\PACK\Keil\STM32F4xx_DFP\2.5.0\Drivers\CMSIS\Device\
-ST\STM32F4xx\Include --predefine="__EVAL SETA 1" --predefine="__UVISION_VERSION
- SETA 515" --predefine="_RTE_ SETA 1" --predefine="STM32F407xx SETA 1" --list=s
-tartup_stm32f407xx.lst startup_stm32f407xx.s
+est -IC:\Keil_v5\ARM\Pack\ARM\CMSIS\4.3.0\CMSIS\Include -IC:\Keil_v5\ARM\Pack\K
+eil\STM32F4xx_DFP\2.5.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include --predefine="
+__UVISION_VERSION SETA 543" --predefine="STM32F407xx SETA 1" --predefine="_RTE_
+ SETA 1" --list=startup_stm32f407xx.lst startup_stm32f407xx.s
 
 
 
@@ -1957,4 +1956,4 @@ Symbol: __use_two_region_memory
       None
 Comment: __use_two_region_memory unused
 3 symbols
-448 symbols in table
+447 symbols in table
