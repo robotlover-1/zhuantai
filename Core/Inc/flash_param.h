@@ -31,6 +31,8 @@
 #define PARAM_OFFSET_PID_SKI        0x28    /* 速度环 S_KI (×100) */
 #define PARAM_OFFSET_PID_SKD        0x2C    /* 速度环 S_KD (×100) */
 #define PARAM_OFFSET_PID_PERIOD     0x30    /* PID采样周期(ms) */
+#define PARAM_OFFSET_PULSE_BUF      0x34    /* 缓冲段起始脉冲数 */
+#define PARAM_OFFSET_TIME_BUF       0x38    /* 缓冲段速度 */
 
 /* 从Flash指定偏移读取一个32位值 */
 #define PARAM_READ(offset)          (*(__IO uint32_t *)(PARAM_SECTOR_BASE + (offset)))

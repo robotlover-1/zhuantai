@@ -17,6 +17,8 @@ extern int32_t force;
 extern int32_t force_F;
 extern int time_c;
 extern int32_t pulse_low;
+extern int32_t pulse_buf;
+extern int time_buf;
 extern int32_t pluse_ele;
 extern int32_t writeFlashData;
 extern float g_pid_kp;
@@ -76,6 +78,24 @@ void param_load_all(void)
         pulse_low = 20000;
     printf("进孔脉冲数S: %d\r\n", pulse_low);
     //printf("S: %d\r\n", pulse_low);
+
+    /* pulse_buf - 缓冲段起始脉冲数 */
+    val = PARAM_READ(PARAM_OFFSET_PULSE_BUF);
+    printf("从Flash读取缓冲段脉冲数: %d\r\n", val);
+    if (val >= 0 && val <= 50000)
+        pulse_buf = val;
+    else
+        pulse_buf = 30000;
+    printf("缓冲段脉冲数BS: %d\r\n", pulse_buf);
+
+    /* time_buf - 缓冲段速度 */
+    val = PARAM_READ(PARAM_OFFSET_TIME_BUF);
+    printf("从Flash读取缓冲段速度: %d\r\n", val);
+    if (val >= 0 && val <= 1000)
+        time_buf = (int)val;
+    else
+        time_buf = 300;
+    printf("缓冲段速度BV: %d\r\n", time_buf);
 
     /* pluse_ele - 光电脉冲检测限制 */
     val = PARAM_READ(PARAM_OFFSET_PLUSE_ELE);
@@ -190,6 +210,10 @@ void param_save_all(void)
                       PARAM_SECTOR_BASE + PARAM_OFFSET_TIME_C, (uint32_t)time_c);
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
                       PARAM_SECTOR_BASE + PARAM_OFFSET_PULSE_LOW, (uint32_t)pulse_low);
+    HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+                      PARAM_SECTOR_BASE + PARAM_OFFSET_PULSE_BUF, (uint32_t)pulse_buf);
+    HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+                      PARAM_SECTOR_BASE + PARAM_OFFSET_TIME_BUF, (uint32_t)time_buf);
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
                       PARAM_SECTOR_BASE + PARAM_OFFSET_PLUSE_ELE, (uint32_t)pluse_ele);
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,

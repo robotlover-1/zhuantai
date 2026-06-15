@@ -215,10 +215,12 @@ float location_last = 0;
 int k_loop = 0;
 volatile uint32_t g_tick_ms = 0;   /* 系统滴答时钟(ms) */
 extern int time_c;
+extern int time_buf;
 extern int duzhuan_flag;
 extern u8 run_printf_flag;
 extern int DIR;
 extern int32_t pulse_low;
+extern int32_t pulse_buf;
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
@@ -237,9 +239,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
                 if (Encode_now >= SetPoint_P - pulse_low)
                 {
                     run_flag = 2;
-                    //ActualValue_S = 0;  /* 复位速度环，从零开始重新积累 */
-                    //LastError_S = 0;
-                    //PrevError_S = 0;
+                    // ActualValue_S = 0;     // ← 清累加输出
+                    // LastError_S  = 0;      // ← 清D项历史
+                    // PrevError_S  = 0;
                 }
             }
             else if (DIR == 1)
@@ -247,9 +249,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
                 if (Encode_now <= SetPoint_P + pulse_low)
                 {
                     run_flag = 3;
-                    //ActualValue_S = 0;
-                    //LastError_S = 0;
-                    //PrevError_S = 0;
+                    // ActualValue_S = 0;     // ← 清累加输出
+                    // LastError_S  = 0;      // ← 清D项历史
+                    // PrevError_S  = 0;
                 }
             }
         }
@@ -274,6 +276,18 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
                         motor_pwm = -force;
                     else if (motor_pwm > -100)
                         motor_pwm = -100;
+                }
+                /* 距离线性限速: 缓冲区内 SetPoint_S 从 force 一条直线降至 time_c */
+                {
+                    float dist = (location < SetPoint_P) ? (SetPoint_P - location) : (location - SetPoint_P);
+                    if (dist < (float)pulse_buf && dist > (float)pulse_low && pulse_buf > pulse_low)
+                    {
+                        float ratio = (dist - (float)pulse_low) / ((float)pulse_buf - (float)pulse_low);
+                        float limit = (float)time_c + ((float)force - (float)time_c) * ratio;
+                        int32_t ilimit = (int32_t)limit;
+                        if (motor_pwm >  ilimit) motor_pwm =  ilimit;
+                        if (motor_pwm < -ilimit) motor_pwm = -ilimit;
+                    }
                 }
                 SetPoint_S = motor_pwm;
                 motor_pwm = increment_pid_speed(speed_m);

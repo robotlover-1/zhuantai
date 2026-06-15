@@ -85,7 +85,9 @@ float PrevError_S;      /* Error[-2] */
 float speed_m;          /* 电机速度 */
 float location;         /* 位置 */
 int32_t motor_pwm;      /* 电机PWM值 */
-int32_t pulse_low = 14000;  // 进孔脉冲数
+int32_t pulse_low = 14000;  // 进孔脉冲数 (慢速段起始)
+int32_t pulse_buf = 30000;  // 缓冲段起始脉冲数 (三段式: 全速→缓冲→慢速)
+int time_buf = 300;         // 缓冲段速度
 int32_t pulse_out = 39000;  // 出孔脉冲数
 int32_t pluse_ele = 38000;  // 光电检测脉冲限制  
 int loop1 = 0;

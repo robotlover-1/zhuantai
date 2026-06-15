@@ -22,6 +22,9 @@ void cmd_set_speed(u8 *buf, int len);    /* V: 最后匀速进孔速度 */
 
 void cmd_set_pulse_low(u8 *buf, int len);/* S: 慢速进孔脉冲数 */
 
+void cmd_set_pulse_buf(u8 *buf, int len);/* BS: 缓冲段起始脉冲数 */
+void cmd_set_speed_buf(u8 *buf, int len);/* BV: 缓冲段速度 */
+
 void cmd_set_photo_pos(u8 *buf, int len);/* P: 拍照孔位 */
 
 void cmd_set_pluse_ele(u8 *buf, int len);/* E: 光电检测限制脉冲数 */

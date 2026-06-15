@@ -34,6 +34,8 @@ extern int32_t force;
 extern int32_t force_F;
 extern int time_c;
 extern int32_t pulse_low;
+extern int32_t pulse_buf;
+extern int time_buf;
 extern int32_t pulse_out;
 extern int32_t pluse_ele;
 extern int loop1;
@@ -104,6 +106,28 @@ void cmd_set_pulse_low(u8 *buf, int len) /* S: 慢速进孔脉冲数 */
 {
     pulse_low = parse_uart_number(buf, len);
     printf("慢速运行进孔脉冲数:%d\r\n", pulse_low);
+    param_save_all();
+}
+
+void cmd_set_pulse_buf(u8 *buf, int len) /* BS: 缓冲段起始脉冲数 */
+{
+    int raw = 0;
+    sscanf((char *)buf, "BS:%d", &raw);
+    if (raw < 0) raw = 0;
+    if (raw > 50000) raw = 50000;
+    pulse_buf = raw;
+    printf("缓冲段起始脉冲数:%d (当前慢速段=%d)\r\n", pulse_buf, pulse_low);
+    param_save_all();
+}
+
+void cmd_set_speed_buf(u8 *buf, int len) /* BV: 缓冲段速度 */
+{
+    int raw = 0;
+    sscanf((char *)buf, "BV:%d", &raw);
+    if (raw < 0) raw = 0;
+    if (raw > 1000) raw = 1000;
+    time_buf = raw;
+    printf("缓冲段速度:%d (进孔速度=%d, 最大速度=%d)\r\n", time_buf, time_c, force);
     param_save_all();
 }
 
@@ -383,6 +407,8 @@ void cmd_show_params(void) /* PARA: 显示所有参数 */
     printf("F(最大速度): %d\r\n", force);
     printf("R(最大占空比): %d\r\n", force_F);
     printf("V(匀速进孔速度): %d\r\n", time_c);
+    printf("BS(缓冲段脉冲数): %d\r\n", pulse_buf);
+    printf("BV(缓冲段速度): %d\r\n", time_buf);
     printf("S(慢速进孔脉冲数): %d\r\n", pulse_low);
     printf("E(光电检测限制): %d\r\n", pluse_ele);
     printf("P(拍照孔位): %d\r\n", PhotoPos);
@@ -707,6 +733,19 @@ int cmd_dispatch(u8 *buf, int len)
     {
         //printf("E:%.*s\r\n", len, buf);
         cmd_set_pluse_ele(buf, len);
+        return 1;
+    }
+
+    /* 三段式缓冲段参数 */
+    if (buf[0] == 'B' && buf[1] == 'S' && buf[2] == ':')    /* BS: 缓冲段起始脉冲数 */
+    {
+        cmd_set_pulse_buf(buf, len);
+        return 1;
+    }
+
+    if (buf[0] == 'B' && buf[1] == 'V' && buf[2] == ':')    /* BV: 缓冲段速度 */
+    {
+        cmd_set_speed_buf(buf, len);
         return 1;
     }
 
