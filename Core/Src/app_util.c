@@ -61,7 +61,7 @@ int ele_is_triggered(void)
 {
     if (HAL_GPIO_ReadPin(ST1_ELE_GPIO_PORT, ST1_ELE_GPIO_PIN) == 0)
     {
-        delay_ms(10);
+        delay_ms(5);
         if (HAL_GPIO_ReadPin(ST1_ELE_GPIO_PORT, ST1_ELE_GPIO_PIN) == 0)
         {
             return 1;
@@ -142,19 +142,47 @@ int check_24v_loss(void)
 }
 
 /**
- * @brief       运动超时检测
- * @param       alarm_code: 报警代码
- * @param       msg:        报警信息
+ * @brief       运动超时检测（区分堵转/机械故障/一般超时）
+ * @param       alarm_code: 一般超时报警代码（堵转/机械故障会覆盖）
+ * @param       msg:        报警信息（一般超时时使用）
  * @retval      1-超时(已自动停止电机), 0-未超时
+ * @note        超时时根据编码器位移量分类：
+ *              - delta < 1000:  堵转(电机卡死), alarm=11
+ *              - delta > 215000: 机械结构异常(编码器飞车), alarm=12
+ *              - 其他:           一般运动超时, alarm=alarm_code
  */
 int check_motion_timeout(int alarm_code, const char *msg)
 {
     if (time_out > 8)
     {
+        extern int32_t Encode_now;
+        extern float SetPoint_C;
+        int32_t delta = (int32_t)(Encode_now - SetPoint_C);
+
+        if (delta < 0) delta = -delta;
+
         motor_safe_stop();
         error = 1;
-        alarm = alarm_code;
-        printf("%s\r\n", msg);
+
+        if (delta < 1000)
+        {
+            /* 编码器几乎没动 → 堵转 */
+            alarm = 11;
+            printf("Stall detected! delta=%d\r\n", (int)delta);
+        }
+        else if (delta > 43000 * 5)   /* 43000*5=215000, 超过一整圈 */
+        {
+            /* 编码器位移远超预期 → 机械结构异常 */
+            alarm = 12;
+            printf("Mechanical failure! delta=%d\r\n", (int)delta);
+        }
+        else
+        {
+            /* 一般超时 */
+            alarm = alarm_code;
+            printf("%s\r\n", msg);
+        }
+
         alarm_pulse();
         return 1;
     }

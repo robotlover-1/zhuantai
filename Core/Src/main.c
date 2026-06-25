@@ -61,6 +61,9 @@ int32_t force_F = 2500;
 int time_c = 100;
 int duzhuan_flag;
 int alarm = 0;
+int undershoot_cnt = 0;  /* 欠冲计数 */
+int overshoot_cnt = 0;   /* 过冲计数 */
+int passhole_cnt = 0;    /* 过孔位计数 */
 float SetPoint_C;
 
 /*********** PID参数 ************/
@@ -89,7 +92,7 @@ int32_t pulse_low = 14000;  // 进孔脉冲数 (慢速段起始)
 int32_t pulse_buf = 30000;  // 缓冲段起始脉冲数 (三段式: 全速→缓冲→慢速)
 int time_buf = 300;         // 缓冲段速度
 int32_t pulse_out = 39000;  // 出孔脉冲数
-int32_t pluse_ele = 38000;  // 光电检测脉冲限制  
+int32_t pluse_ele = 34000;  // 光电检测脉冲限制  
 int loop1 = 0;
 int loop2 = 0;
 int PhotoPos = 1;

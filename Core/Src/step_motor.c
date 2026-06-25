@@ -113,6 +113,9 @@ extern int32_t force;
 extern float SetPoint_P; 
 extern float SetPoint_C; 
 extern int duzhuan_flag;
+extern int undershoot_cnt;  /* 欠冲计数 */
+extern int overshoot_cnt;   /* 过冲计数 */
+extern int passhole_cnt;    /* 过孔位计数 */
 float SetPluse;
 
 extern int alarm;						 
@@ -170,6 +173,15 @@ void step_motor_motion(int num, int dir)
 							break;
 						}
 					}
+					
+					/* 过孔位但光电未触发：正常停下触发回转，而非等到+5000报警 */
+					if (Encode_now > SetPoint_P + 300 && Encode_now <= SetPoint_P + 5000)
+					{
+						printf("过孔位,光电未触发,触发回转...\r\n");
+						passhole_cnt++;
+						motor_stop_normal();
+						break;  /* error=0, 下方 else 分支执行回转 */
+					}
 
 					if (Encode_now > SetPoint_P + 5000)
 					{
@@ -209,7 +221,9 @@ void step_motor_motion(int num, int dir)
 					if (Encode_now < SetPoint_P - 300)
 					{
 						printf("当前位置:%d\r\n", Encode_now);
+						undershoot_cnt++;
 						delay_ms(100);
+						SetPoint_C = Encode_now;  /* 重置起点, 用于堵转检测 */
 						motor_start_motion();
 						run_flag = 2;
 						Ring = 0;
@@ -235,7 +249,9 @@ void step_motor_motion(int num, int dir)
 					else if (Encode_now > SetPoint_P + 300)
 					{
 						printf("当前位置:%d\r\n", Encode_now);
+						overshoot_cnt++;
 						delay_ms(100);
+						SetPoint_C = Encode_now;  /* 重置起点, 用于堵转检测 */
 						motor_start_motion();
 						run_flag = 3;
 						Ring = 0;
@@ -309,6 +325,15 @@ void step_motor_motion(int num, int dir)
 						}
 					}
 
+					/* 过孔位但光电未触发：正常停下触发正向调整，而非等到-5000报警 */
+					if (Encode_now < SetPoint_P - 300 && Encode_now >= SetPoint_P - 5000)
+					{
+						printf("过孔位,光电未触发,触发正向调整...\r\n");
+						passhole_cnt++;
+						motor_stop_normal();
+						break;  /* error=0, 下方 else 分支执行正向修正 */
+					}
+
 					if (Encode_now < SetPoint_P - 5000)
 					{
 						motor_safe_stop();
@@ -345,7 +370,9 @@ void step_motor_motion(int num, int dir)
 					if (Encode_now > SetPoint_P + 300)
 					{
 						printf("当前位置:%d\r\n", Encode_now);
+						undershoot_cnt++;
 						delay_ms(100);
+						SetPoint_C = Encode_now;  /* 重置起点, 用于堵转检测 */
 						motor_start_motion();
 						run_flag = 3;
 						Ring = 0;
@@ -371,7 +398,9 @@ void step_motor_motion(int num, int dir)
 					else if (Encode_now < SetPoint_P - 300)
 					{
 						printf("当前位置:%d\r\n", Encode_now);
+						overshoot_cnt++;
 						delay_ms(100);
+						SetPoint_C = Encode_now;  /* 重置起点, 用于堵转检测 */
 						motor_start_motion();
 						run_flag = 2;
 						Ring = 0;

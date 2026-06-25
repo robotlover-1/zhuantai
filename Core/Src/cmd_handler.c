@@ -150,7 +150,7 @@ void cmd_set_kp(u8 *buf, int len) /* KP: 位置环P增益 (整数×1000, 如 KP:
     int raw = 0;
     sscanf((char *)buf, "KP:%d", &raw);
     if (raw < 0) raw = 0;
-    if (raw > 1000) raw = 1000;
+    if (raw > 3000) raw = 3000;
     g_pid_kp = raw * 0.001f;
     printf("位置环KP: %.3f\r\n", g_pid_kp);
     param_save_all();
@@ -426,6 +426,18 @@ void cmd_show_params(void) /* PARA: 显示所有参数 */
 void cmd_alarm(void) /* ALARM: 查询报警代码 */
 {
     printf("报警代码:%d\r\n", alarm);
+}
+
+void cmd_stat(void) /* STAT: 运动统计 */
+{
+    extern int undershoot_cnt;
+    extern int overshoot_cnt;
+    extern int passhole_cnt;
+    printf("====== 运动统计 ======\r\n");
+    printf("欠冲: %d\r\n", undershoot_cnt);
+    printf("过冲: %d\r\n", overshoot_cnt);
+    printf("过孔位: %d\r\n", passhole_cnt);
+    printf("====================\r\n");
 }
 
 /******************************************************************************************/
@@ -920,6 +932,12 @@ int cmd_dispatch(u8 *buf, int len)
     {
         //printf("ALARM:%.*s\r\n", len, buf);
         cmd_alarm();
+        return 1;
+    }
+
+    if (buf[0] == 'S' && buf[1] == 'T' && buf[2] == 'A' && buf[3] == 'T')
+    {
+        cmd_stat();
         return 1;
     }
 
