@@ -440,6 +440,17 @@ void cmd_stat(void) /* STAT: 运动统计 */
     printf("====================\r\n");
 }
 
+void cmd_stat_clear(void) /* STATC: 清除运动统计 */
+{
+    extern int undershoot_cnt;
+    extern int overshoot_cnt;
+    extern int passhole_cnt;
+    undershoot_cnt = 0;
+    overshoot_cnt = 0;
+    passhole_cnt = 0;
+    printf("运动统计已清除\r\n");
+}
+
 /******************************************************************************************/
 /* 工位跳转 */
 /******************************************************************************************/
@@ -937,7 +948,10 @@ int cmd_dispatch(u8 *buf, int len)
 
     if (buf[0] == 'S' && buf[1] == 'T' && buf[2] == 'A' && buf[3] == 'T')
     {
-        cmd_stat();
+        if (buf[4] == 'C')      /* STATC: 清除运动统计 */
+            cmd_stat_clear();
+        else                     /* STAT:  运动统计 */
+            cmd_stat();
         return 1;
     }
 

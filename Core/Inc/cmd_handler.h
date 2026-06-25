@@ -64,7 +64,8 @@ void cmd_res(void);                      /* RES: 串口更新程序 */
 
 void cmd_alarm(void);                    /* ALARM: 查询报警代码 */
 
-void cmd_stat(void);                     /* STAT: 运动统计(欠冲/过冲/过孔位次数) */
+void cmd_stat(void);                     /* STAT:  运动统计(欠冲/过冲/过孔位次数) */
+void cmd_stat_clear(void);               /* STATC: 清除运动统计 */
 
 /* 命令处理函数 - 工位跳转 */
 void cmd_goto_station(int station);      /* L1-L5: 跳转到指定工位 */
