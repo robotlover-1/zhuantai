@@ -69,14 +69,23 @@ void pid_init(void)
 extern int pulse_add; 
 
 int32_t increment_pid_speed(float Feedback_value)
-{	  
-    Error_S = (float)(SetPoint_S - Feedback_value);                   /* 计算偏差 */ 
+{
+    Error_S = (float)(SetPoint_S - Feedback_value);                   /* 计算偏差 */
+
+    /* 条件积分抗饱和: 误差>400时积分衰减到30%, 200~400线性过渡, <200满积分 */
+    float i_scale = 1.0f;
+    float abs_err = (Error_S > 0.0f) ? Error_S : -Error_S;
+    if (abs_err > 400.0f)
+        i_scale = 0.3f;
+    else if (abs_err > 200.0f)
+        i_scale = 0.3f + 0.7f * (400.0f - abs_err) / 200.0f;
+
     ActualValue_S += (Proportion_S * (Error_S - LastError_S))                          /* 比例环节 */
-                        + (Integral_S * Error_S)                                             /* 积分环节 */
+                        + (i_scale * Integral_S * Error_S)                                        /* 积分环节(条件积分) */
                         + (Derivative_S * (Error_S - 2 *LastError_S + PrevError_S));  /* 微分环节 */
     PrevError_S = LastError_S;                                        /* 存储偏差，用于下次计算 */
     LastError_S = Error_S;
-    return ((int32_t)(ActualValue_S )); 
+    return ((int32_t)(ActualValue_S ));
 //	  SumError_S += Error_S;
 //    ActualValue_S = (Proportion_S * Error_S)                       /* 比例环节 */
 //                       + (Integral_S * SumError_S )                    /* 积分环节 */
