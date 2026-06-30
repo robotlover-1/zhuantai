@@ -64,6 +64,7 @@ int alarm = 0;
 int undershoot_cnt = 0;  /* 欠冲计数 */
 int overshoot_cnt = 0;   /* 过冲计数 */
 int passhole_cnt = 0;    /* 过孔位计数 */
+int32_t total_cycles = 0; /* 总转动孔位计数 (Flash持久化, 耐久验证) */
 float SetPoint_C;
 
 /*********** PID参数 ************/
@@ -90,7 +91,7 @@ float location;         /* 位置 */
 int32_t motor_pwm;      /* 电机PWM值 */
 int32_t pulse_low = 14000;  // 进孔脉冲数 (慢速段起始)
 int32_t pulse_buf = 30000;  // 缓冲段起始脉冲数 (三段式: 全速→缓冲→慢速)
-int time_buf = 300;         // 缓冲段速度
+int time_buf = 500;         // 缓冲段入口速度 (S曲线起点, 推荐 force的50%~70%)
 int32_t pulse_out = 39000;  // 出孔脉冲数
 int32_t pluse_ele = 34000;  // 光电检测脉冲限制  
 int loop1 = 0;

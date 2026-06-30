@@ -24,6 +24,8 @@ extern int alarm;
 extern int duzhuan_flag;
 extern u8 time_out;
 extern TIM_HandleTypeDef TIM5_Handler;
+extern int32_t total_cycles;
+extern void param_save_all(void);
 
 /******************************************************************************************/
 /* 报警/状态指示灯 */
@@ -105,14 +107,14 @@ void motor_stop_normal(void)
 
 /**
  * @brief       标准电机启动序列
- * @note        清零time_out, 启动TIM5超时定时器, 初始化PID, 启动电机
+ * @note        清零time_out, 启动TIM5超时定时器, 启动电机
+ *              (PID重置由调用方在必要时自行调用pid_init())
  */
 void motor_start_motion(void)
 {
     extern int DIR;
     time_out = 0;
     HAL_TIM_Base_Start_IT(&TIM5_Handler);
-    pid_init();
     run_printf_flag = 1;
     /* 启动两个PWM通道，方向由motor_pwm_set通过CCR控制 */
     HAL_TIM_PWM_Start(&g_timx_pwm_chy_handle, TIM_CHANNEL_1);
@@ -342,7 +344,14 @@ void handle_station_verify(int hal_start, int hal_end)
     if (check_station_valid(hal_start, hal_end))
     {
         char ts[32]; rtc_get_time_str(ts, sizeof(ts));
-        printf("[%s] 已经运动到位置:%d\r\n", ts, hal_end);
+        total_cycles++;
+        printf("[%s] 已经运动到位置:%d (总转动:%d)\r\n", ts, hal_end, total_cycles);
+        /* 每1万次自动保存统计到Flash, 平衡数据持久性和Flash寿命 */
+        if (total_cycles % 10000 == 0)
+        {
+            param_save_all();
+            printf(">>> 自动保存统计 (第%d次) <<<\r\n", total_cycles);
+        }
         done_pulse();
     }
     else

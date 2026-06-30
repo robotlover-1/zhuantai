@@ -143,6 +143,7 @@ void step_motor_motion(int num, int dir)
 			if (dir == 0)  /* 正转 */
 			{
 				DIR = 0;
+				pid_init();
 				motor_start_motion();
 				SetPoint_C = Encode_now;
 				SetPoint_P = Encode_now + 39200;
@@ -278,7 +279,7 @@ void step_motor_motion(int num, int dir)
 						printf_flag = 1;
 						run_flag = 0;
 						run_printf_flag = 0;
-						printf("到达位置!\r\n");
+						printf("二次到位成功!\r\n");
 						hal_y = read_hal();
 						handle_station_verify(hal_x, hal_y);
 					}
@@ -287,7 +288,7 @@ void step_motor_motion(int num, int dir)
 					{
 						error = 1;
 						alarm = 7;
-						printf("工位到达失败!\r\n");
+						printf("二次到位失败!\r\n");
 						alarm_pulse();
 					}
 				}
@@ -296,6 +297,7 @@ void step_motor_motion(int num, int dir)
 			else if (dir == 1)  /* 反转 */
 			{
 				DIR = 1;
+				pid_init();
 				motor_start_motion();
 				SetPoint_C = Encode_now;
 				SetPoint_P = Encode_now - 39200;
@@ -427,7 +429,7 @@ void step_motor_motion(int num, int dir)
 						printf_flag = 1;
 						run_flag = 0;
 						run_printf_flag = 0;
-						printf("到达位置!\r\n");
+						printf("二次到位成功!\r\n");
 						hal_y = read_hal();
 						handle_station_verify(hal_x, hal_y);
 					}
@@ -437,7 +439,7 @@ void step_motor_motion(int num, int dir)
 						printf_flag = 0;
 						error = 1;
 						alarm = 7;
-						printf("工位到达失败!\r\n");
+						printf("二次到位失败!\r\n");
 						alarm_pulse();
 					}
 				}
@@ -466,9 +468,10 @@ void motor_init(void)
 		else if (error == 0)
 		{
 			if (run_printf_flag == 0) 
-			{
-				motor_start_motion();
-				run_flag = 2;
+				{
+					pid_init();
+					motor_start_motion();
+					run_flag = 2;
 				delay_ms(20);
 				while (1) 
 				{
@@ -502,6 +505,7 @@ void motor_init(void)
 				{
 
 					/* 第一次未找到, 再试一次 */
+					pid_init();
 					motor_start_motion();
 					run_flag = 2;
 					delay_ms(20);

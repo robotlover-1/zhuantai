@@ -451,6 +451,19 @@ void cmd_stat_clear(void) /* STATC: 清除运动统计 */
     printf("运动统计已清除\r\n");
 }
 
+void cmd_cycle(void) /* CYCLE: 查询总转动计数 (只读, 不可清零, 用于耐久验证) */
+{
+    extern int32_t total_cycles;
+    printf("总转动孔位计数: %d\r\n", total_cycles);
+}
+
+void cmd_save_cycle(void) /* SAVEC: 手动保存 total_cycles 到Flash (避免每次自动写Flash, 延长寿命) */
+{
+    extern int32_t total_cycles;
+    param_save_all();
+    printf("总转动计数已保存: %d\r\n", total_cycles);
+}
+
 /******************************************************************************************/
 /* 工位跳转 */
 /******************************************************************************************/
@@ -952,6 +965,18 @@ int cmd_dispatch(u8 *buf, int len)
             cmd_stat_clear();
         else                     /* STAT:  运动统计 */
             cmd_stat();
+        return 1;
+    }
+
+    if (buf[0] == 'S' && buf[1] == 'A' && buf[2] == 'V' && buf[3] == 'E' && buf[4] == 'C')
+    {
+        cmd_save_cycle();
+        return 1;
+    }
+
+    if (buf[0] == 'C' && buf[1] == 'Y' && buf[2] == 'C' && buf[3] == 'L' && buf[4] == 'E')
+    {
+        cmd_cycle();
         return 1;
     }
 

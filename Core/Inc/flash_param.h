@@ -33,6 +33,10 @@
 #define PARAM_OFFSET_PID_PERIOD     0x30    /* PID采样周期(ms) */
 #define PARAM_OFFSET_PULSE_BUF      0x34    /* 缓冲段起始脉冲数 */
 #define PARAM_OFFSET_TIME_BUF       0x38    /* 缓冲段速度 */
+#define PARAM_OFFSET_CYCLE_CNT      0x3C    /* 总转动孔位计数 (耐久性验证) */
+#define PARAM_OFFSET_UNDER_CNT      0x40    /* 欠冲累计计数 */
+#define PARAM_OFFSET_OVER_CNT       0x44    /* 过冲累计计数 */
+#define PARAM_OFFSET_PASSHOLE_CNT   0x48    /* 过孔位累计计数 */
 
 /* 从Flash指定偏移读取一个32位值 */
 #define PARAM_READ(offset)          (*(__IO uint32_t *)(PARAM_SECTOR_BASE + (offset)))

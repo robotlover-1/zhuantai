@@ -1,4 +1,4 @@
-﻿/**
+/**
  ****************************************************************************************************
  * @file        flash_param.c
  * @brief       F407 Flash 参数存储管理实现
@@ -28,6 +28,10 @@ extern float g_pid_skp;
 extern float g_pid_ski;
 extern float g_pid_skd;
 extern int   g_pid_period_ms;
+extern int32_t total_cycles;
+extern int undershoot_cnt;
+extern int overshoot_cnt;
+extern int passhole_cnt;
 
 /******************************************************************************************/
 /* 公共实现 */
@@ -71,7 +75,7 @@ void param_load_all(void)
 
     /* pulse_low - 进孔脉冲数 */
     val = PARAM_READ(PARAM_OFFSET_PULSE_LOW);
-    printf("从Flash读取进孔脉冲数: %d\r\n", val);
+    printf("Flash read - pulse_low: %d\r\n", val);
     if (val >= 0 && val <= 20000)
         pulse_low = val;
     else
@@ -99,18 +103,18 @@ void param_load_all(void)
 
     /* pluse_ele - 光电脉冲检测限制 */
     val = PARAM_READ(PARAM_OFFSET_PLUSE_ELE);
-    printf("从Flash读取光电脉冲检测限制: %d\r\n", val);
+    printf("Flash read - pluse_ele: %d\r\n", val);
     if (val >= 0 && val <= 39000)
         pluse_ele = val;
     else
-        pluse_ele = 38000;
+        pluse_ele = 34000;
     printf("光电脉冲限制E: %d\r\n", pluse_ele);
     //printf("E: %d\r\n", pluse_ele);
 
     /* PID 位置环 KP (×1000) */
     {
         int32_t raw = PARAM_READ(PARAM_OFFSET_PID_KP);
-        if (raw >= 0 && raw <= 1000)
+        if (raw >= 0 && raw <= 3000)
             g_pid_kp = raw * 0.001f;
         else
             g_pid_kp = KP;
@@ -120,7 +124,7 @@ void param_load_all(void)
     /* PID 位置环 KI (×1000) */
     {
         int32_t raw = PARAM_READ(PARAM_OFFSET_PID_KI);
-        if (raw >= 0 && raw <= 1000)
+        if (raw >= 0 && raw <= 3000)
             g_pid_ki = raw * 0.001f;
         else
             g_pid_ki = KI;
@@ -176,6 +180,38 @@ void param_load_all(void)
             g_pid_period_ms = SMAPLSE_PID_SPEED;
     }
     printf("PID采样周期: %dms\r\n", g_pid_period_ms);
+
+    /* total_cycles - 总转动孔位计数 */
+    val = PARAM_READ(PARAM_OFFSET_CYCLE_CNT);
+    if (val >= 0)
+        total_cycles = val;
+    else
+        total_cycles = 0;
+    printf("总转动计数: %d\r\n", total_cycles);
+
+    /* undershoot_cnt - 欠冲累计计数 */
+    val = PARAM_READ(PARAM_OFFSET_UNDER_CNT);
+    if (val >= 0)
+        undershoot_cnt = (int)val;
+    else
+        undershoot_cnt = 0;
+    printf("欠冲累计: %d\r\n", undershoot_cnt);
+
+    /* overshoot_cnt - 过冲累计计数 */
+    val = PARAM_READ(PARAM_OFFSET_OVER_CNT);
+    if (val >= 0)
+        overshoot_cnt = (int)val;
+    else
+        overshoot_cnt = 0;
+    printf("过冲累计: %d\r\n", overshoot_cnt);
+
+    /* passhole_cnt - 过孔位累计计数 */
+    val = PARAM_READ(PARAM_OFFSET_PASSHOLE_CNT);
+    if (val >= 0)
+        passhole_cnt = (int)val;
+    else
+        passhole_cnt = 0;
+    printf("过孔位累计: %d\r\n", passhole_cnt);
 
     /* 更新标志 */
     writeFlashData = PARAM_READ(PARAM_OFFSET_UPDATE);
@@ -234,6 +270,14 @@ void param_save_all(void)
                       PARAM_SECTOR_BASE + PARAM_OFFSET_PID_SKD, (uint32_t)(g_pid_skd * 100.0f + 0.5f));
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
                       PARAM_SECTOR_BASE + PARAM_OFFSET_PID_PERIOD, (uint32_t)g_pid_period_ms);
+    HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+                      PARAM_SECTOR_BASE + PARAM_OFFSET_CYCLE_CNT, (uint32_t)total_cycles);
+    HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+                      PARAM_SECTOR_BASE + PARAM_OFFSET_UNDER_CNT, (uint32_t)undershoot_cnt);
+    HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+                      PARAM_SECTOR_BASE + PARAM_OFFSET_OVER_CNT, (uint32_t)overshoot_cnt);
+    HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+                      PARAM_SECTOR_BASE + PARAM_OFFSET_PASSHOLE_CNT, (uint32_t)passhole_cnt);
 
     /* 锁定Flash */
     HAL_FLASH_Lock();

@@ -259,7 +259,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         {
             _pid_cnt = 0;
             k_loop++;
-            //printf("k_loop%d\r\n", k_loop);        /* ISR中严禁printf */
             if (run_flag == 1)
             {
                 motor_pwm = position_pid_speed(location);
@@ -277,13 +276,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
                     else if (motor_pwm > -100)
                         motor_pwm = -100;
                 }
-                /* 距离线性限速: 缓冲区内 SetPoint_S 从 force 一条直线降至 time_c */
+                /* 距离S曲线限速: 缓冲区内用 smoothstep 从 time_buf 平滑降至 time_c */
                 {
                     float dist = (location < SetPoint_P) ? (SetPoint_P - location) : (location - SetPoint_P);
                     if (dist < (float)pulse_buf && dist > (float)pulse_low && pulse_buf > pulse_low)
                     {
-                        float ratio = (dist - (float)pulse_low) / ((float)pulse_buf - (float)pulse_low);
-                        float limit = (float)time_c + ((float)force - (float)time_c) * ratio;
+                        float t = (dist - (float)pulse_low) / ((float)pulse_buf - (float)pulse_low);
+                        float smoothed = t * t * (3.0f - 2.0f * t);  /* smoothstep 首尾导数为0 */
+                        float limit = (float)time_c + ((float)time_buf - (float)time_c) * smoothed;
                         int32_t ilimit = (int32_t)limit;
                         if (motor_pwm >  ilimit) motor_pwm =  ilimit;
                         if (motor_pwm < -ilimit) motor_pwm = -ilimit;
