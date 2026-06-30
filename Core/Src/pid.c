@@ -72,13 +72,18 @@ int32_t increment_pid_speed(float Feedback_value)
 {
     Error_S = (float)(SetPoint_S - Feedback_value);                   /* 计算偏差 */
 
-    /* 条件积分抗饱和: 误差>400时积分衰减到30%, 200~400线性过渡, <200满积分 */
+    /* 条件积分抗饱和: 仅超速时(|spd|>|SpdS|)衰减积分, 加速/欠速时满积分 */
     float i_scale = 1.0f;
-    float abs_err = (Error_S > 0.0f) ? Error_S : -Error_S;
-    if (abs_err > 400.0f)
-        i_scale = 0.3f;
-    else if (abs_err > 200.0f)
-        i_scale = 0.3f + 0.7f * (400.0f - abs_err) / 200.0f;
+    float abs_spds = (SetPoint_S > 0.0f) ? SetPoint_S : -SetPoint_S;
+    if (abs_spds > 0.5f)   /* SpdS有效(非零), 才做条件积分 */
+    {
+        float abs_spd  = (Feedback_value > 0.0f) ? Feedback_value : -Feedback_value;
+        float ratio = abs_spd / abs_spds;
+        if (ratio > 1.3f)
+            i_scale = 0.3f;
+        else if (ratio > 1.0f)
+            i_scale = 0.3f + 0.7f * (1.3f - ratio) / 0.3f;          /* 1.0→1.3 线性过渡 */
+    }
 
     ActualValue_S += (Proportion_S * (Error_S - LastError_S))                          /* 比例环节 */
                         + (i_scale * Integral_S * Error_S)                                        /* 积分环节(条件积分) */
