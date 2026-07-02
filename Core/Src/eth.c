@@ -59,6 +59,9 @@
 /* 中断状态位 */
 #define DM9000_ISR_PRS      (1 << 0)  /* 包接收 */
 #define DM9000_ISR_PTS      (1 << 1)  /* 包发送完成 */
+/* 网络状态位 */
+#define DM9000_NSR_TX1END   (1 << 2)
+#define DM9000_NSR_TX2END   (1 << 3)
 
 /* ---- 全局变量 ---- */
 cmd_source_t g_cmd_src = CMD_SRC_UART;
@@ -176,7 +179,7 @@ int dm9000_recv_packet(uint8_t *buf, u16 *len)
     u16 i;
 
     /* 读取 ISR，清除 PRS 位 */
-    dm9000_reg_write(DM9000_ISR, 0x01);  /* 写1清零 */
+    dm9000_reg_write(DM9000_ISR, DM9000_ISR_PRS);  /* 写1清零 */
     rx_ready = dm9000_reg_read(DM9000_ISR);
     if (!(rx_ready & DM9000_ISR_PRS)) {
         return -1;  /* 无数据 */
@@ -227,7 +230,7 @@ int dm9000_send_packet(uint8_t *buf, u16 len)
 
     /* 等待上次发送完成 */
     timeout = 100000;
-    while (!(dm9000_reg_read(DM9000_TCR) & 0x01)) {
+    while (dm9000_reg_read(DM9000_TCR) & DM9000_TCR_REQ) {
         if (--timeout == 0) return -1;
     }
 
@@ -246,16 +249,16 @@ int dm9000_send_packet(uint8_t *buf, u16 len)
     }
 
     /* 触发发送 */
-    dm9000_reg_write(DM9000_TCR, 0x01);
+    dm9000_reg_write(DM9000_TCR, DM9000_TCR_REQ);
 
     /* 等待发送完成 */
     timeout = 500000;
-    while (!(dm9000_reg_read(DM9000_NSR) & 0x0C)) {
+    while (!(dm9000_reg_read(DM9000_NSR) & (DM9000_NSR_TX1END | DM9000_NSR_TX2END))) {
         if (--timeout == 0) return -1;
     }
 
     /* 清除发送完成标志 */
-    dm9000_reg_write(DM9000_NSR, 0x0C);
+    dm9000_reg_write(DM9000_NSR, (DM9000_NSR_TX1END | DM9000_NSR_TX2END));
 
     return 0;
 }
