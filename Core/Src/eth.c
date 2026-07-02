@@ -162,3 +162,100 @@ int dm9000_hw_init(uint8_t *mac_addr)
 
     return 0;
 }
+
+/**
+ * @brief  从 DM9000 接收 FIFO 读出一帧以太网数据
+ * @param  buf: 输出缓冲区
+ * @param  len: [out] 实际帧长度
+ * @retval 0=成功, -1=无数据或错误
+ */
+int dm9000_recv_packet(uint8_t *buf, u16 *len)
+{
+    u8  rx_ready;
+    u16 status, pkt_len;
+    u16 i;
+
+    /* 读取 ISR，清除 PRS 位 */
+    dm9000_reg_write(DM9000_ISR, 0x01);  /* 写1清零 */
+    rx_ready = dm9000_reg_read(DM9000_ISR);
+    if (!(rx_ready & DM9000_ISR_PRS)) {
+        return -1;  /* 无数据 */
+    }
+
+    /* 读取数据 (先读 MRCMD 中的 dummy byte) */
+    DM9000_INDEX_ADDR = DM9000_MRCMD;
+    (void)DM9000_DATA_ADDR;  /* dummy read */
+
+    /* 读取状态和长度 (DM9000 在每帧前插入 4 字节头部) */
+    status   = DM9000_DATA_ADDR;
+    pkt_len  = DM9000_DATA_ADDR;
+
+    /* 检查接收状态 */
+    if (!(status & 0x3F00)) {
+        /* 错误帧: 丢弃 */
+        return -1;
+    }
+
+    if (pkt_len > 1536 || pkt_len < 64) {
+        return -1;  /* 非法长度 */
+    }
+
+    *len = (u16)(pkt_len);
+
+    /* 读取帧数据 (16-bit 读取) */
+    for (i = 0; i < pkt_len; i += 2) {
+        u16 word = DM9000_DATA_ADDR;
+        buf[i]     = (u8)(word & 0xFF);
+        if (i + 1 < pkt_len) {
+            buf[i + 1] = (u8)((word >> 8) & 0xFF);
+        }
+    }
+
+    return 0;
+}
+
+/**
+ * @brief  向 DM9000 发送 FIFO 写入一帧并触发发送
+ * @param  buf: 数据缓冲区
+ * @param  len: 帧长度
+ * @retval 0=成功, -1=超时
+ */
+int dm9000_send_packet(uint8_t *buf, u16 len)
+{
+    u16 i;
+    u32 timeout;
+
+    /* 等待上次发送完成 */
+    timeout = 100000;
+    while (!(dm9000_reg_read(DM9000_TCR) & 0x01)) {
+        if (--timeout == 0) return -1;
+    }
+
+    /* 写入发送长度 */
+    dm9000_reg_write(DM9000_TXPLL, (u8)(len & 0xFF));
+    dm9000_reg_write(DM9000_TXPLH, (u8)((len >> 8) & 0xFF));
+
+    /* 写入发送数据 */
+    DM9000_INDEX_ADDR = DM9000_MWCMD;
+    for (i = 0; i < len; i += 2) {
+        u16 word = buf[i];
+        if (i + 1 < len) {
+            word |= ((u16)buf[i + 1] << 8);
+        }
+        DM9000_DATA_ADDR = word;
+    }
+
+    /* 触发发送 */
+    dm9000_reg_write(DM9000_TCR, 0x01);
+
+    /* 等待发送完成 */
+    timeout = 500000;
+    while (!(dm9000_reg_read(DM9000_NSR) & 0x0C)) {
+        if (--timeout == 0) return -1;
+    }
+
+    /* 清除发送完成标志 */
+    dm9000_reg_write(DM9000_NSR, 0x0C);
+
+    return 0;
+}
