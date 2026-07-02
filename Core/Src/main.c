@@ -35,6 +35,7 @@
 #include "exti.h"
 #include "cmd_handler.h"
 #include "rtc.h"
+#include "eth.h"
 
 /************************************************/
 /************************************************/
@@ -171,6 +172,11 @@ int main(void)
   atim_timx_pwm_chy_init(3600 - 1, 10);
   uart_init(115200);                     /* 直接寄存器配置，无需HAL */
 
+    /* 以太网初始化 (DM9000 + LwIP + TCP Server) */
+    /* 放在 uart_init 之后: printf 可用, 可输出初始化日志 */
+    /* 放在 __enable_irq 之前: 避免初始化未完成时中断干扰 */
+    eth_init();
+
   /* USER CODE BEGIN 2 */
     __enable_irq();                                            /* 开启全局中断，TIM6使用硬件中断 */
     USART_RX_STA = 0;                                          /* 清除开中断瞬间可能收到的噪声 */
@@ -250,6 +256,28 @@ int main(void)
         }
 
         in2_last = in2_now;
+
+        /* ---- 以太网处理 ---- */
+        /* 1. LwIP 协议栈周期处理 (收包、定时器、发送) */
+        MX_LWIP_Process();
+
+        /* 2. TCP 接收处理 (镜像 UART5 的处理逻辑) */
+        if (g_eth_rx_ready)
+        {
+            u16 eth_len = g_eth_rx_len;
+            g_eth_rx_ready = 0;
+            g_eth_rx_len = 0;
+            g_cmd_src = CMD_SRC_TCP;
+            printf("ETH_RX: %s\r\n", g_eth_rx_buf);
+            cmd_dispatch(g_eth_rx_buf, eth_len);
+            g_cmd_src = CMD_SRC_UART;
+            /* 清理接收缓冲区 */
+            {
+                u16 i;
+                for (i = 0; i < ETH_RX_BUF_SIZE; i++) g_eth_rx_buf[i] = 0;
+            }
+        }
+
         if (printf_flag == 1)
         {
             printf_flag = 0;
