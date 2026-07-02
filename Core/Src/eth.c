@@ -289,16 +289,19 @@ static err_t tcp_recv_cb(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t 
         return ERR_OK;
     }
 
-    /* 将数据拷贝到接收缓冲区 */
+    /* 将数据拷贝到接收缓冲区 (使用局部变量 q 遍历，保留 p 指向链头) */
     total_len = 0;
-    while (p != NULL && total_len < ETH_RX_BUF_SIZE - 1) {
-        u16 copy_len = p->len;
-        if (total_len + copy_len > ETH_RX_BUF_SIZE - 1) {
-            copy_len = ETH_RX_BUF_SIZE - 1 - total_len;
+    {
+        struct pbuf *q = p;
+        while (q != NULL && total_len < ETH_RX_BUF_SIZE - 1) {
+            u16 copy_len = q->len;
+            if (total_len + copy_len > ETH_RX_BUF_SIZE - 1) {
+                copy_len = ETH_RX_BUF_SIZE - 1 - total_len;
+            }
+            MEMCPY(&g_eth_rx_buf[total_len], q->payload, copy_len);
+            total_len += copy_len;
+            q = q->next;
         }
-        MEMCPY(&g_eth_rx_buf[total_len], p->payload, copy_len);
-        total_len += copy_len;
-        p = p->next;
     }
     g_eth_rx_buf[total_len] = '\0';
     g_eth_rx_len = total_len;
@@ -307,7 +310,7 @@ static err_t tcp_recv_cb(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t 
     /* 通知 LwIP 已接收 */
     tcp_recved(tpcb, total_len);
 
-    pbuf_free(p);
+    pbuf_free(p);  /* p 仍指向链头，正确释放整个 pbuf 链 */
     return ERR_OK;
 }
 
