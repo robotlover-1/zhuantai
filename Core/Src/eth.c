@@ -15,6 +15,7 @@
 #include "lwip/netif.h"
 #include "lwip/tcp.h"
 #include "lwip/timeouts.h"
+#include "lwip/pbuf.h"
 #include "netif/ethernet.h"
 
 /* ---- DM9000 硬件地址 (FSMC Bank1, NE1) ---- */
@@ -86,7 +87,11 @@ u8  g_eth_mask[4] = {255, 255, 255, 0};
 u8  g_eth_gw[4]   = {192, 168, 1, 1};
 u16 g_eth_port    = 5000;
 
-/* ---- 转发声明 ---- */
+/* ---- 转发声明 (ethernetif.c 提供的 LwIP 移植接口) ---- */
+err_t ethernetif_init(struct netif *netif);
+void  ethernetif_input(struct netif *netif);
+
+/* ---- 转发声明 (TCP 回调) ---- */
 static err_t tcp_accept_cb(void *arg, struct tcp_pcb *newpcb, err_t err);
 static err_t tcp_recv_cb(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err);
 static void  tcp_err_cb(void *arg, err_t err);
@@ -259,6 +264,214 @@ int dm9000_send_packet(uint8_t *buf, u16 len)
 
     /* 清除发送完成标志 */
     dm9000_reg_write(DM9000_NSR, (DM9000_NSR_TX1END | DM9000_NSR_TX2END));
+
+    return 0;
+}
+
+/* ================================================================ */
+/* TCP Server 回调                                                   */
+/* ================================================================ */
+
+/**
+ * @brief  TCP 接收回调 — LwIP 收到数据时调用
+ */
+static err_t tcp_recv_cb(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
+{
+    u16 total_len;
+    (void)arg;
+    (void)err;
+
+    if (p == NULL) {
+        /* 客户端关闭连接 */
+        g_tcp_client_connected = 0;
+        g_client_pcb = NULL;
+        printf("[ETH] 客户端断开\r\n");
+        return ERR_OK;
+    }
+
+    /* 将数据拷贝到接收缓冲区 */
+    total_len = 0;
+    while (p != NULL && total_len < ETH_RX_BUF_SIZE - 1) {
+        u16 copy_len = p->len;
+        if (total_len + copy_len > ETH_RX_BUF_SIZE - 1) {
+            copy_len = ETH_RX_BUF_SIZE - 1 - total_len;
+        }
+        MEMCPY(&g_eth_rx_buf[total_len], p->payload, copy_len);
+        total_len += copy_len;
+        p = p->next;
+    }
+    g_eth_rx_buf[total_len] = '\0';
+    g_eth_rx_len = total_len;
+    g_eth_rx_ready = 1;
+
+    /* 通知 LwIP 已接收 */
+    tcp_recved(tpcb, total_len);
+
+    pbuf_free(p);
+    return ERR_OK;
+}
+
+/**
+ * @brief  TCP 错误回调 — 连接异常断开
+ */
+static void tcp_err_cb(void *arg, err_t err)
+{
+    (void)arg;
+    (void)err;
+    g_tcp_client_connected = 0;
+    g_client_pcb = NULL;
+    printf("[ETH] TCP 错误: %d\r\n", err);
+}
+
+/**
+ * @brief  TCP 发送完成回调
+ */
+static err_t tcp_sent_cb(void *arg, struct tcp_pcb *tpcb, u16_t len)
+{
+    (void)arg;
+    (void)tpcb;
+    (void)len;
+    return ERR_OK;
+}
+
+/**
+ * @brief  TCP 接受连接回调 — 单客户端，拒绝多连接
+ */
+static err_t tcp_accept_cb(void *arg, struct tcp_pcb *newpcb, err_t err)
+{
+    (void)arg;
+    (void)err;
+
+    if (g_tcp_client_connected) {
+        /* 已有客户端，拒绝新连接 */
+        printf("[ETH] 拒绝新客户端 (已有连接)\r\n");
+        tcp_abort(newpcb);
+        return ERR_ABRT;
+    }
+
+    g_client_pcb = newpcb;
+    g_tcp_client_connected = 1;
+    g_cmd_src = CMD_SRC_UART;  /* 确保标志复位 */
+
+    /* 注册回调 */
+    tcp_arg(newpcb, NULL);
+    tcp_recv(newpcb, tcp_recv_cb);
+    tcp_err(newpcb, tcp_err_cb);
+    tcp_sent(newpcb, tcp_sent_cb);
+
+    printf("[ETH] 客户端已连接\r\n");
+    return ERR_OK;
+}
+
+/* ================================================================ */
+/* TCP 逐字节发送                                                    */
+/* ================================================================ */
+
+/**
+ * @brief  发送单字节到 TCP 客户端 (供 fputc 路由调用)
+ * @note   非阻塞：发送失败/无客户端 静默返回
+ *         LwIP 内部会对 tcp_write() 的数据进行缓冲，
+ *         由 MX_LWIP_Process() 中的 tcp_output() 周期发送。
+ */
+void eth_tcp_send_byte(uint8_t ch)
+{
+    err_t werr;
+
+    if (!g_tcp_client_connected || g_client_pcb == NULL) {
+        return;
+    }
+
+    /* 仅当发送缓冲区有空间时才写入 */
+    if (tcp_sndbuf(g_client_pcb) > 0) {
+        werr = tcp_write(g_client_pcb, &ch, 1, TCP_WRITE_FLAG_COPY);
+        if (werr != ERR_OK) {
+            /* 失败静默丢弃，不阻塞 */
+        }
+    }
+}
+
+/* ================================================================ */
+/* LwIP 协议栈周期处理                                               */
+/* ================================================================ */
+
+/**
+ * @brief  LwIP 协议栈周期处理 (主循环中调用)
+ * @note   轮询 DM9000 收包 → 投喂 LwIP → 处理 TCP 定时器 → tcp_output 发送
+ */
+void MX_LWIP_Process(void)
+{
+    /* 1. 收包: 从 DM9000 读取并投喂 LwIP */
+    ethernetif_input(&g_netif);
+
+    /* 2. LwIP 定时器处理 (ARP 超时、TCP 重传等) */
+    sys_check_timeouts();
+
+    /* 3. 如果有客户端，触发 TCP 发送 (将缓冲数据发出) */
+    if (g_tcp_client_connected && g_client_pcb != NULL) {
+        tcp_output(g_client_pcb);
+    }
+}
+
+/* ================================================================ */
+/* 以太网完整初始化: DM9000 → LwIP → TCP Server                       */
+/* ================================================================ */
+
+/**
+ * @brief  以太网完整初始化: DM9000 → LwIP → TCP Server
+ * @retval 0=成功, -1=DM9000 失败, -2=LwIP 失败
+ */
+int eth_init(void)
+{
+    /* 0. FSMC 已在 MX_GPIO_Init 中配置，无需重复 */
+    /* 为安全，DM9000 RST 脚保持高 */
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_7, GPIO_PIN_SET);
+
+    /* 1. DM9000 硬件初始化 */
+    if (dm9000_hw_init(g_mac_addr) != 0) {
+        return -1;
+    }
+
+    /* 2. LwIP 初始化 */
+    lwip_init();
+    printf("[ETH] LwIP 初始化完成\r\n");
+
+    /* 3. 配置 IP 地址 */
+    IP4_ADDR(&g_ipaddr,
+             g_eth_ip[0], g_eth_ip[1], g_eth_ip[2], g_eth_ip[3]);
+    IP4_ADDR(&g_netmask,
+             g_eth_mask[0], g_eth_mask[1], g_eth_mask[2], g_eth_mask[3]);
+    IP4_ADDR(&g_gw,
+             g_eth_gw[0], g_eth_gw[1], g_eth_gw[2], g_eth_gw[3]);
+
+    /* 4. 添加网络接口 */
+    if (netif_add(&g_netif, &g_ipaddr, &g_netmask, &g_gw,
+                  NULL, ethernetif_init, netif_input) == NULL) {
+        printf("[ETH] netif_add 失败!\r\n");
+        return -2;
+    }
+
+    netif_set_default(&g_netif);
+    netif_set_up(&g_netif);
+
+    printf("[ETH] 网络接口已建立: %d.%d.%d.%d\r\n",
+           g_eth_ip[0], g_eth_ip[1], g_eth_ip[2], g_eth_ip[3]);
+
+    /* 5. 创建 TCP Server */
+    g_tcp_pcb = tcp_new();
+    if (g_tcp_pcb == NULL) {
+        printf("[ETH] TCP PCB 创建失败!\r\n");
+        return -2;
+    }
+
+    if (tcp_bind(g_tcp_pcb, IP_ADDR_ANY, g_eth_port) != ERR_OK) {
+        printf("[ETH] TCP bind 端口 %d 失败!\r\n", g_eth_port);
+        return -2;
+    }
+
+    g_tcp_pcb = tcp_listen(g_tcp_pcb);
+    tcp_accept(g_tcp_pcb, tcp_accept_cb);
+
+    printf("[ETH] TCP Server 监听端口 %d\r\n", g_eth_port);
 
     return 0;
 }
