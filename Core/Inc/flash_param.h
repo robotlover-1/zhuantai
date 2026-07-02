@@ -37,6 +37,10 @@
 #define PARAM_OFFSET_UNDER_CNT      0x40    /* 欠冲累计计数 */
 #define PARAM_OFFSET_OVER_CNT       0x44    /* 过冲累计计数 */
 #define PARAM_OFFSET_PASSHOLE_CNT   0x48    /* 过孔位累计计数 */
+#define PARAM_OFFSET_ETH_IP         0x4C    /* 本机IP (4 bytes packed) */
+#define PARAM_OFFSET_ETH_MASK       0x50    /* 子网掩码 (4 bytes packed) */
+#define PARAM_OFFSET_ETH_GW         0x54    /* 默认网关 (4 bytes packed) */
+#define PARAM_OFFSET_ETH_PORT       0x58    /* TCP 监听端口 */
 
 /* 从Flash指定偏移读取一个32位值 */
 #define PARAM_READ(offset)          (*(__IO uint32_t *)(PARAM_SECTOR_BASE + (offset)))
@@ -44,6 +48,11 @@
 /******************************************************************************************/
 /* 外部接口 */
 /******************************************************************************************/
+extern u8  g_eth_ip[4];
+extern u8  g_eth_mask[4];
+extern u8  g_eth_gw[4];
+extern u16 g_eth_port;
+
 void param_load_all(void);          /* 从Flash加载所有参数（含有效性校验） */
 
 void param_save_all(void);          /* 一次性保存所有参数到Flash */

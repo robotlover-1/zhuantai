@@ -32,6 +32,10 @@ extern int32_t total_cycles;
 extern int undershoot_cnt;
 extern int overshoot_cnt;
 extern int passhole_cnt;
+extern u8  g_eth_ip[4];
+extern u8  g_eth_mask[4];
+extern u8  g_eth_gw[4];
+extern u16 g_eth_port;
 
 /******************************************************************************************/
 /* 公共实现 */
@@ -215,6 +219,55 @@ void param_load_all(void)
 
     /* 更新标志 */
     writeFlashData = PARAM_READ(PARAM_OFFSET_UPDATE);
+
+    /* ---- 网络参数 ---- */
+    /* IP 地址 */
+    {
+        int32_t raw = PARAM_READ(PARAM_OFFSET_ETH_IP);
+        if (raw != 0xFFFFFFFF && raw != 0) {  /* 有效值，非擦除态 */
+            g_eth_ip[0] = (u8)((raw >> 0)  & 0xFF);
+            g_eth_ip[1] = (u8)((raw >> 8)  & 0xFF);
+            g_eth_ip[2] = (u8)((raw >> 16) & 0xFF);
+            g_eth_ip[3] = (u8)((raw >> 24) & 0xFF);
+        }
+    }
+    printf("IP: %d.%d.%d.%d\r\n",
+           g_eth_ip[0], g_eth_ip[1], g_eth_ip[2], g_eth_ip[3]);
+
+    /* 子网掩码 */
+    {
+        int32_t raw = PARAM_READ(PARAM_OFFSET_ETH_MASK);
+        if (raw != 0xFFFFFFFF && raw != 0) {
+            g_eth_mask[0] = (u8)((raw >> 0)  & 0xFF);
+            g_eth_mask[1] = (u8)((raw >> 8)  & 0xFF);
+            g_eth_mask[2] = (u8)((raw >> 16) & 0xFF);
+            g_eth_mask[3] = (u8)((raw >> 24) & 0xFF);
+        }
+    }
+    printf("MASK: %d.%d.%d.%d\r\n",
+           g_eth_mask[0], g_eth_mask[1], g_eth_mask[2], g_eth_mask[3]);
+
+    /* 网关 */
+    {
+        int32_t raw = PARAM_READ(PARAM_OFFSET_ETH_GW);
+        if (raw != 0xFFFFFFFF && raw != 0) {
+            g_eth_gw[0] = (u8)((raw >> 0)  & 0xFF);
+            g_eth_gw[1] = (u8)((raw >> 8)  & 0xFF);
+            g_eth_gw[2] = (u8)((raw >> 16) & 0xFF);
+            g_eth_gw[3] = (u8)((raw >> 24) & 0xFF);
+        }
+    }
+    printf("GW: %d.%d.%d.%d\r\n",
+           g_eth_gw[0], g_eth_gw[1], g_eth_gw[2], g_eth_gw[3]);
+
+    /* TCP 端口 */
+    {
+        int32_t raw = PARAM_READ(PARAM_OFFSET_ETH_PORT);
+        if (raw > 0 && raw <= 65535) {
+            g_eth_port = (u16)raw;
+        }
+    }
+    printf("PORT: %d\r\n", g_eth_port);
 }
 
 /**
@@ -278,6 +331,31 @@ void param_save_all(void)
                       PARAM_SECTOR_BASE + PARAM_OFFSET_OVER_CNT, (uint32_t)overshoot_cnt);
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
                       PARAM_SECTOR_BASE + PARAM_OFFSET_PASSHOLE_CNT, (uint32_t)passhole_cnt);
+
+    /* 保存网络参数 */
+    {
+        uint32_t ip_packed = ((uint32_t)g_eth_ip[3] << 24) |
+                             ((uint32_t)g_eth_ip[2] << 16) |
+                             ((uint32_t)g_eth_ip[1] << 8)  |
+                             ((uint32_t)g_eth_ip[0]);
+        uint32_t mask_packed = ((uint32_t)g_eth_mask[3] << 24) |
+                               ((uint32_t)g_eth_mask[2] << 16) |
+                               ((uint32_t)g_eth_mask[1] << 8)  |
+                               ((uint32_t)g_eth_mask[0]);
+        uint32_t gw_packed = ((uint32_t)g_eth_gw[3] << 24) |
+                             ((uint32_t)g_eth_gw[2] << 16) |
+                             ((uint32_t)g_eth_gw[1] << 8)  |
+                             ((uint32_t)g_eth_gw[0]);
+
+        HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+                          PARAM_SECTOR_BASE + PARAM_OFFSET_ETH_IP,   ip_packed);
+        HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+                          PARAM_SECTOR_BASE + PARAM_OFFSET_ETH_MASK, mask_packed);
+        HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+                          PARAM_SECTOR_BASE + PARAM_OFFSET_ETH_GW,   gw_packed);
+        HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+                          PARAM_SECTOR_BASE + PARAM_OFFSET_ETH_PORT, (uint32_t)g_eth_port);
+    }
 
     /* 锁定Flash */
     HAL_FLASH_Lock();
