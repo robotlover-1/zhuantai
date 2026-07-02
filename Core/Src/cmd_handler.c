@@ -61,6 +61,10 @@ extern u8 USART_TX_BUF[];
 extern u8 USART_TX_BUF_4[];
 extern int32_t addr;
 extern int32_t writeFlashData;
+extern u8  g_eth_ip[4];
+extern u8  g_eth_mask[4];
+extern u8  g_eth_gw[4];
+extern u16 g_eth_port;
 
 /******************************************************************************************/
 /* 参数设置类命令*/
@@ -418,6 +422,14 @@ void cmd_show_params(void) /* PARA: 显示所有参数 */
     printf("PC(采样周期): %dms\r\n", g_pid_period_ms);
     printf("KP(位置环P): %.3f  KI: %.3f  KD: %.3f\r\n", g_pid_kp, g_pid_ki, g_pid_kd);
     printf("SK(速度环P): %.2f  SI: %.2f  SD: %.2f\r\n", g_pid_skp, g_pid_ski, g_pid_skd);
+    printf("--- 网络配置 ---\r\n");
+    printf("IP: %d.%d.%d.%d\r\n",
+           g_eth_ip[0], g_eth_ip[1], g_eth_ip[2], g_eth_ip[3]);
+    printf("MASK: %d.%d.%d.%d\r\n",
+           g_eth_mask[0], g_eth_mask[1], g_eth_mask[2], g_eth_mask[3]);
+    printf("GW: %d.%d.%d.%d\r\n",
+           g_eth_gw[0], g_eth_gw[1], g_eth_gw[2], g_eth_gw[3]);
+    printf("PORT: %d\r\n", g_eth_port);
     printf("====================\r\n");
     printf("Alarm: %d  Error: %d\r\n", alarm, error);
     printf("Encode: %d  RunFlag: %d\r\n", Encode_now, run_flag);
@@ -702,6 +714,76 @@ void cmd_dp(u8 *buf, int len) /* DP: 定时打印PID状态 (ms) */
         printf("调试打印: 已关闭\r\n");
 }
 
+/**
+ * @brief  IP: 设置本机IP地址
+ *         格式: IP:192.168.1.100
+ */
+void cmd_set_ip(u8 *buf, int len)
+{
+    int a = 192, b = 168, c = 1, d = 100;
+    (void)len;
+    sscanf((char *)buf, "IP:%d.%d.%d.%d", &a, &b, &c, &d);
+    if (a < 0 || a > 255) a = 192;
+    if (b < 0 || b > 255) b = 168;
+    if (c < 0 || c > 255) c = 1;
+    if (d < 0 || d > 255) d = 100;
+    g_eth_ip[0] = (u8)a;
+    g_eth_ip[1] = (u8)b;
+    g_eth_ip[2] = (u8)c;
+    g_eth_ip[3] = (u8)d;
+    printf("IP 已设置为: %d.%d.%d.%d (需发送RES复位生效)\r\n", a, b, c, d);
+    param_save_all();
+}
+
+/**
+ * @brief  MASK: 设置子网掩码
+ *         格式: MASK:255.255.255.0
+ */
+void cmd_set_mask(u8 *buf, int len)
+{
+    int a = 255, b = 255, c = 255, d = 0;
+    (void)len;
+    sscanf((char *)buf, "MASK:%d.%d.%d.%d", &a, &b, &c, &d);
+    g_eth_mask[0] = (u8)a;
+    g_eth_mask[1] = (u8)b;
+    g_eth_mask[2] = (u8)c;
+    g_eth_mask[3] = (u8)d;
+    printf("MASK 已设置为: %d.%d.%d.%d (需发送RES复位生效)\r\n", a, b, c, d);
+    param_save_all();
+}
+
+/**
+ * @brief  GW: 设置默认网关
+ *         格式: GW:192.168.1.1
+ */
+void cmd_set_gw(u8 *buf, int len)
+{
+    int a = 192, b = 168, c = 1, d = 1;
+    (void)len;
+    sscanf((char *)buf, "GW:%d.%d.%d.%d", &a, &b, &c, &d);
+    g_eth_gw[0] = (u8)a;
+    g_eth_gw[1] = (u8)b;
+    g_eth_gw[2] = (u8)c;
+    g_eth_gw[3] = (u8)d;
+    printf("GW 已设置为: %d.%d.%d.%d (需发送RES复位生效)\r\n", a, b, c, d);
+    param_save_all();
+}
+
+/**
+ * @brief  PORT: 设置TCP监听端口
+ *         格式: PORT:5000
+ */
+void cmd_set_port(u8 *buf, int len)
+{
+    int port = 5000;
+    (void)len;
+    sscanf((char *)buf, "PORT:%d", &port);
+    if (port < 1 || port > 65535) port = 5000;
+    g_eth_port = (u16)port;
+    printf("PORT 已设置为: %d (需发送RES复位生效)\r\n", port);
+    param_save_all();
+}
+
 /******************************************************************************************/
 /* 命令分发函数 */
 /******************************************************************************************/
@@ -755,6 +837,28 @@ int cmd_dispatch(u8 *buf, int len)
     {
         //printf("S:%.*s\r\n", len, buf);
         cmd_set_pulse_low(buf, len);
+        return 1;
+    }
+
+    /* 网络参数设置 (IP/MASK/GW/PORT) */
+    if (buf[0] == 'I' && buf[1] == 'P' && buf[2] == ':')
+    {
+        cmd_set_ip(buf, len);
+        return 1;
+    }
+    if (buf[0] == 'M' && buf[1] == 'A' && buf[2] == 'S' && buf[3] == 'K' && buf[4] == ':')
+    {
+        cmd_set_mask(buf, len);
+        return 1;
+    }
+    if (buf[0] == 'G' && buf[1] == 'W' && buf[2] == ':')
+    {
+        cmd_set_gw(buf, len);
+        return 1;
+    }
+    if (buf[0] == 'P' && buf[1] == 'O' && buf[2] == 'R' && buf[3] == 'T' && buf[4] == ':')
+    {
+        cmd_set_port(buf, len);
         return 1;
     }
 

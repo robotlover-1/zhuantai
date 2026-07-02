@@ -81,6 +81,11 @@ void cmd_gff_test(void);                 /* gff: 正转拍照测试 */
 
 void cmd_gmm_test(void);                 /* gmm: 反转拍照测试 */
 
+void cmd_set_ip(u8 *buf, int len);        /* IP: 设置本机IP地址 */
+void cmd_set_mask(u8 *buf, int len);      /* MASK: 设置子网掩码 */
+void cmd_set_gw(u8 *buf, int len);        /* GW: 设置默认网关 */
+void cmd_set_port(u8 *buf, int len);      /* PORT: 设置TCP监听端口 */
+
 /* 命令分发 */
 int cmd_dispatch(u8 *buf, int len);      /* 串口命令分发入口 */
 #endif
