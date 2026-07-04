@@ -13,13 +13,14 @@
 /* ---- semihosting stubs (required by --no_semihosting) ---- */
 void _sys_exit(int x)       { x = x; }
 void _ttywrch(int ch)       { (void)ch; }
-int  _sys_open(const char *name, int mode, int len) { (void)name; (void)mode; (void)len; return -1; }
-int  _sys_close(int fh)     { (void)fh; return -1; }
-int  _sys_write(int fh, const unsigned char *buf, unsigned len, int mode)  { (void)fh; (void)buf; (void)mode; return (int)len; }
-int  _sys_read(int fh, unsigned char *buf, unsigned len, int mode) { (void)fh; (void)buf; (void)mode; return 0; }
-int  _sys_istty(int fh)     { (void)fh; return 1; }
-int  _sys_seek(int fh, long pos) { (void)fh; (void)pos; return -1; }
-long _sys_flen(int fh)      { (void)fh; return 0; }
+/* Use $Sub$$ prefix so ARM linker uses our function instead of library's semihosting version */
+int  $Sub$$_sys_open(const char *name, int mode, int len) { (void)name; (void)mode; (void)len; return -1; }
+int  $Sub$$_sys_close(int fh)     { (void)fh; return -1; }
+int  $Sub$$_sys_write(int fh, const unsigned char *buf, unsigned len, int mode)  { (void)fh; (void)buf; (void)mode; return (int)len; }
+int  $Sub$$_sys_read(int fh, unsigned char *buf, unsigned len, int mode) { (void)fh; (void)buf; (void)mode; return 0; }
+int  $Sub$$_sys_istty(int fh)     { (void)fh; return 1; }
+int  $Sub$$_sys_seek(int fh, long pos) { (void)fh; (void)pos; return -1; }
+long $Sub$$_sys_flen(int fh)      { (void)fh; return 0; }
 
 int fputc(int ch, FILE *f)
 {
