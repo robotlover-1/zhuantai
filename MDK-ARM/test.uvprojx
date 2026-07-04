@@ -414,6 +414,16 @@
               <FileType>1</FileType>
               <FilePath>../Core/Src/stm32f4xx_hal_msp.c</FilePath>
             </File>
+            <File>
+              <FileName>eth.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/eth.c</FilePath>
+            </File>
+            <File>
+              <FileName>ethernetif.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/ethernetif.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -616,6 +626,11 @@
               <FileName>ip4_frag.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Middlewares/LwIP/src/core/ipv4/ip4_frag.c</FilePath>
+            </File>
+            <File>
+              <FileName>inet_chksum.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/core/inet_chksum.c</FilePath>
             </File>
             <File>
               <FileName>etharp.c</FileName>

@@ -14,6 +14,7 @@
 #define SYS_LIGHTWEIGHT_PROT        0       /* bare-metal: no OS-level critical section protection */
 
 /* ---- 功能裁剪 ---- */
+#define LWIP_IPV4               1
 #define LWIP_TCP                1
 #define LWIP_UDP                0
 #define LWIP_DHCP               0
