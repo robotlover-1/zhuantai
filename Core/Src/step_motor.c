@@ -7,6 +7,7 @@
 #include "exti.h"
 #include "key.h"
 #include "stdio.h"
+#include "rtc.h"
 
 extern TIM_HandleTypeDef g_timx_pwm_chy_handle;
 extern TIM_HandleTypeDef g_timx_encode_chy_handle;
@@ -133,7 +134,8 @@ void step_motor_motion(int num, int dir)
 
 	if (hal_x == 1 || hal_x == 2 || hal_x == 3 || hal_x == 4 || hal_x == 5)
 	{
-		printf("当前位置:%d\r\n", hal_x);
+		char ts[32]; rtc_get_time_str(ts, sizeof(ts));
+printf("[%s] 当前位置:%d\r\n", ts, hal_x);
 	}
 
 	if (run_printf_flag == 0 && error == 0 && run_flag == 0) 
@@ -221,7 +223,8 @@ void step_motor_motion(int num, int dir)
 					/* 过孔到达但光电未触发，需调整 */
 					if (Encode_now < SetPoint_P - 300)
 					{
-						printf("当前位置:%d\r\n", Encode_now);
+						char ts[32]; rtc_get_time_str(ts, sizeof(ts));
+printf("[%s] 当前位置:%d\r\n", ts, Encode_now);
 						undershoot_cnt++;
 						delay_ms(100);
 						SetPoint_C = Encode_now;  /* 重置起点, 用于堵转检测 */
@@ -249,7 +252,8 @@ void step_motor_motion(int num, int dir)
 
 					else if (Encode_now > SetPoint_P + 300)
 					{
-						printf("当前位置:%d\r\n", Encode_now);
+						char ts[32]; rtc_get_time_str(ts, sizeof(ts));
+printf("[%s] 当前位置:%d\r\n", ts, Encode_now);
 						overshoot_cnt++;
 						delay_ms(100);
 						SetPoint_C = Encode_now;  /* 重置起点, 用于堵转检测 */
@@ -371,7 +375,8 @@ void step_motor_motion(int num, int dir)
 					/* 过孔到达但光电未触发，需调整 */
 					if (Encode_now > SetPoint_P + 300)
 					{
-						printf("当前位置:%d\r\n", Encode_now);
+						char ts[32]; rtc_get_time_str(ts, sizeof(ts));
+printf("[%s] 当前位置:%d\r\n", ts, Encode_now);
 						undershoot_cnt++;
 						delay_ms(100);
 						SetPoint_C = Encode_now;  /* 重置起点, 用于堵转检测 */
@@ -399,7 +404,8 @@ void step_motor_motion(int num, int dir)
 
 					else if (Encode_now < SetPoint_P - 300)
 					{
-						printf("当前位置:%d\r\n", Encode_now);
+						char ts[32]; rtc_get_time_str(ts, sizeof(ts));
+printf("[%s] 当前位置:%d\r\n", ts, Encode_now);
 						overshoot_cnt++;
 						delay_ms(100);
 						SetPoint_C = Encode_now;  /* 重置起点, 用于堵转检测 */

@@ -8,6 +8,7 @@
 #include "cmd_handler.h"
 #include "app_util.h"
 #include "flash_param.h"
+#include "rtc.h"
 #include "step_motor.h"
 #include "usart.h"
 #include "usart2.h"
@@ -184,39 +185,39 @@ void cmd_set_kd(u8 *buf, int len) /* KD: 位置环D增益 (整数×1000) */
     param_save_all();
 }
 
-void cmd_set_skp(u8 *buf, int len) /* SK: 速度环P增益 (整数×100, 如 SK:350 = 3.50) */
+void cmd_set_skp(u8 *buf, int len) /* SK: 速度环P增益 (整数×1000, 如 SK:3515 = 3.515) */
 {
     extern float g_pid_skp;
     int raw = 0;
     sscanf((char *)buf, "SK:%d", &raw);
     if (raw < 0) raw = 0;
-    if (raw > 5000) raw = 5000;
-    g_pid_skp = raw * 0.01f;
-    printf("速度环S_KP: %.2f\r\n", g_pid_skp);
+    if (raw > 50000) raw = 50000;
+    g_pid_skp = raw * 0.001f;
+    printf("速度环S_KP: %.3f\r\n", g_pid_skp);
     param_save_all();
 }
 
-void cmd_set_ski(u8 *buf, int len) /* SI: 速度环I增益 (整数×100) */
+void cmd_set_ski(u8 *buf, int len) /* SI: 速度环I增益 (整数×1000, 如 SI:515 = 0.515) */
 {
     extern float g_pid_ski;
     int raw = 0;
     sscanf((char *)buf, "SI:%d", &raw);
     if (raw < 0) raw = 0;
-    if (raw > 5000) raw = 5000;
-    g_pid_ski = raw * 0.01f;
-    printf("速度环S_KI: %.2f\r\n", g_pid_ski);
+    if (raw > 50000) raw = 50000;
+    g_pid_ski = raw * 0.001f;
+    printf("速度环S_KI: %.3f\r\n", g_pid_ski);
     param_save_all();
 }
 
-void cmd_set_skd(u8 *buf, int len) /* SD: 速度环D增益 (整数×100) */
+void cmd_set_skd(u8 *buf, int len) /* SD: 速度环D增益 (整数×1000, 如 SD:50 = 0.050) */
 {
     extern float g_pid_skd;
     int raw = 0;
     sscanf((char *)buf, "SD:%d", &raw);
     if (raw < 0) raw = 0;
-    if (raw > 5000) raw = 5000;
-    g_pid_skd = raw * 0.01f;
-    printf("速度环S_KD: %.2f\r\n", g_pid_skd);
+    if (raw > 50000) raw = 50000;
+    g_pid_skd = raw * 0.001f;
+    printf("速度环S_KD: %.3f\r\n", g_pid_skd);
     param_save_all();
 }
 
@@ -321,7 +322,8 @@ static void cmd_station_roundtrip(int base)
     error = 0; run_flag = 0; run_printf_flag = 0;
     station_x = read_hal();
     if(station_x != base){
-        printf("当前位置:%d, 需要先回到工位%d\r\n", station_x, base);
+        char ts[32]; rtc_get_time_str(ts, sizeof(ts));
+printf("[%s] 当前位置:%d, 需要先回到工位%d\r\n", ts, station_x, base);
         step_motor_LX(base, dir_jud(base, station_x));
         wait_motion_done();
     }
@@ -421,7 +423,7 @@ void cmd_show_params(void) /* PARA: 显示所有参数 */
     printf("--- PID参数 ---\r\n");
     printf("PC(采样周期): %dms\r\n", g_pid_period_ms);
     printf("KP(位置环P): %.3f  KI: %.3f  KD: %.3f\r\n", g_pid_kp, g_pid_ki, g_pid_kd);
-    printf("SK(速度环P): %.2f  SI: %.2f  SD: %.2f\r\n", g_pid_skp, g_pid_ski, g_pid_skd);
+    printf("SK(速度环P): %.3f  SI: %.3f  SD: %.3f\r\n", g_pid_skp, g_pid_ski, g_pid_skd);
     printf("--- 网络配置 ---\r\n");
     printf("IP: %d.%d.%d.%d\r\n",
            g_eth_ip[0], g_eth_ip[1], g_eth_ip[2], g_eth_ip[3]);
