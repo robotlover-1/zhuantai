@@ -633,6 +633,11 @@
               <FilePath>../Middlewares/LwIP/src/core/inet_chksum.c</FilePath>
             </File>
             <File>
+              <FileName>ip.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/core/ip.c</FilePath>
+            </File>
+            <File>
               <FileName>etharp.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Middlewares/LwIP/src/core/ipv4/etharp.c</FilePath>
