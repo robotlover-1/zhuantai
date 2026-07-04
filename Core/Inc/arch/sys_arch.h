@@ -20,6 +20,7 @@ typedef u8_t sys_sem_t;
 typedef u8_t sys_mutex_t;
 typedef u8_t sys_mbox_t;
 typedef u8_t sys_thread_t;
+typedef u8_t sys_prot_t;
 
 #define SYS_MBOX_NULL   0
 #define SYS_SEM_NULL    0

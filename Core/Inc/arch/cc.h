@@ -20,7 +20,11 @@ typedef uint32_t    u32_t;
 typedef int32_t     s32_t;
 typedef uintptr_t   mem_ptr_t;
 
-#define PACK_STRUCT_STRUCT  __packed    /* Keil MDK packed 属性 */
+/* ARMCC V5 requires __packed BEFORE the struct keyword, not after the closing brace.
+ * LwIP protocol headers use: PACK_STRUCT_BEGIN struct foo { ... } PACK_STRUCT_STRUCT;
+ * So __packed goes in PACK_STRUCT_BEGIN, and PACK_STRUCT_STRUCT is empty. */
+#define PACK_STRUCT_BEGIN   __packed
+#define PACK_STRUCT_STRUCT  /* empty for ARMCC */
 
 #define LWIP_PROVIDE_ERRNO  1           /* LwIP 提供 errno */
 
