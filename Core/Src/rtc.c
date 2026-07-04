@@ -100,17 +100,18 @@ void rtc_get_time_str(char *buf, int len)
 {
     if (buf == NULL || len < 32) return;
 
-	{
-	    uint32_t _tick = HAL_GetTick();
-	    while ((RTC->ISR & RTC_ISR_RSF) == 0) {
-	        if ((HAL_GetTick() - _tick) > 50) break;
-		}
-	}
-	if ((RTC->ISR & RTC_ISR_RSF) == 0) {
-	    snprintf(buf, len, "---- -- -- --:--:--");
-	    return;
-	}
+    /* 先清除RSF，然后等待RTC影子寄存器同步完成 */
     RTC->ISR &= ~RTC_ISR_RSF;
+    {
+        uint32_t _tick = HAL_GetTick();
+        while ((RTC->ISR & RTC_ISR_RSF) == 0) {
+            if ((HAL_GetTick() - _tick) > 200) break;  /* LSI 同步可能需要 100ms+ */
+        }
+    }
+    if ((RTC->ISR & RTC_ISR_RSF) == 0) {
+        snprintf(buf, len, "---- -- -- --:--:--");
+        return;
+    }
 
     uint32_t dr = RTC->DR;
     uint32_t tr = RTC->TR;
