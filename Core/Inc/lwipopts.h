@@ -11,6 +11,7 @@
 #define NO_SYS                      1
 #define LWIP_TCPIP_CORE_LOCKING     1
 #define LWIP_TCPIP_CORE_LOCKING_INPUT 1
+#define SYS_LIGHTWEIGHT_PROT        0       /* bare-metal: no OS-level critical section protection */
 
 /* ---- 功能裁剪 ---- */
 #define LWIP_TCP                1
