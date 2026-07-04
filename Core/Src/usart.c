@@ -7,12 +7,9 @@
 
 #if 1
 #pragma import(__use_no_semihosting)
-struct __FILE
-{
-    int handle;
-};
+/* __stdout is provided by the C library (stdio_streams.o);
+ * we only override fputc() for UART5 output. */
 
-FILE __stdout;
 void _sys_exit(int x)
 {
     x = x;
