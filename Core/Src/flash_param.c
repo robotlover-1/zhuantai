@@ -145,35 +145,35 @@ void param_load_all(void)
     }
     printf("位置环KD: %.3f\r\n", g_pid_kd);
 
-    /* PID 速度环 S_KP (×100) */
+    /* PID 速度环 S_KP (×1000) */
     {
         int32_t raw = PARAM_READ(PARAM_OFFSET_PID_SKP);
-        if (raw >= 0 && raw <= 5000)
-            g_pid_skp = raw * 0.01f;
+        if (raw >= 0 && raw <= 50000)
+            g_pid_skp = raw * 0.001f;
         else
             g_pid_skp = S_KP;
     }
-    printf("速度环S_KP: %.2f\r\n", g_pid_skp);
+    printf("速度环S_KP: %.3f\r\n", g_pid_skp);
 
-    /* PID 速度环 S_KI (×100) */
+    /* PID 速度环 S_KI (×1000) */
     {
         int32_t raw = PARAM_READ(PARAM_OFFSET_PID_SKI);
-        if (raw >= 0 && raw <= 5000)
-            g_pid_ski = raw * 0.01f;
+        if (raw >= 0 && raw <= 50000)
+            g_pid_ski = raw * 0.001f;
         else
             g_pid_ski = S_KI;
     }
-    printf("速度环S_KI: %.2f\r\n", g_pid_ski);
+    printf("速度环S_KI: %.3f\r\n", g_pid_ski);
 
-    /* PID 速度环 S_KD (×100) */
+    /* PID 速度环 S_KD (×1000) */
     {
         int32_t raw = PARAM_READ(PARAM_OFFSET_PID_SKD);
-        if (raw >= 0 && raw <= 5000)
-            g_pid_skd = raw * 0.01f;
+        if (raw >= 0 && raw <= 50000)
+            g_pid_skd = raw * 0.001f;
         else
             g_pid_skd = S_KD;
     }
-    printf("速度环S_KD: %.2f\r\n", g_pid_skd);
+    printf("速度环S_KD: %.3f\r\n", g_pid_skd);
 
     /* PID采样周期 */
     {
@@ -191,7 +191,7 @@ void param_load_all(void)
         total_cycles = val;
     else
         total_cycles = 0;
-    printf("总转动计数: %d\r\n", total_cycles);
+    printf("total_cycles: %d\r\n", total_cycles);
 
     /* undershoot_cnt - 欠冲累计计数 */
     val = PARAM_READ(PARAM_OFFSET_UNDER_CNT);
@@ -215,7 +215,7 @@ void param_load_all(void)
         passhole_cnt = (int)val;
     else
         passhole_cnt = 0;
-    printf("过孔位累计: %d\r\n", passhole_cnt);
+    printf("passhole_cnt: %d\r\n", passhole_cnt);
 
     /* 更新标志 */
     writeFlashData = PARAM_READ(PARAM_OFFSET_UPDATE);
@@ -316,11 +316,11 @@ void param_save_all(void)
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
                       PARAM_SECTOR_BASE + PARAM_OFFSET_PID_KD,  (uint32_t)(g_pid_kd  * 1000.0f + 0.5f));
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
-                      PARAM_SECTOR_BASE + PARAM_OFFSET_PID_SKP, (uint32_t)(g_pid_skp * 100.0f + 0.5f));
+                      PARAM_SECTOR_BASE + PARAM_OFFSET_PID_SKP, (uint32_t)(g_pid_skp * 1000.0f + 0.5f));
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
-                      PARAM_SECTOR_BASE + PARAM_OFFSET_PID_SKI, (uint32_t)(g_pid_ski * 100.0f + 0.5f));
+                      PARAM_SECTOR_BASE + PARAM_OFFSET_PID_SKI, (uint32_t)(g_pid_ski * 1000.0f + 0.5f));
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
-                      PARAM_SECTOR_BASE + PARAM_OFFSET_PID_SKD, (uint32_t)(g_pid_skd * 100.0f + 0.5f));
+                      PARAM_SECTOR_BASE + PARAM_OFFSET_PID_SKD, (uint32_t)(g_pid_skd * 1000.0f + 0.5f));
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
                       PARAM_SECTOR_BASE + PARAM_OFFSET_PID_PERIOD, (uint32_t)g_pid_period_ms);
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,

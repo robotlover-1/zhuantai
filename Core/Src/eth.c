@@ -147,11 +147,11 @@ int dm9000_hw_init(uint8_t *mac_addr)
     pid = (dm9000_reg_read(DM9000_PIDH) << 8) | dm9000_reg_read(DM9000_PIDL);
 
     if (vid != 0x0A46 || pid != 0x9000) {
-        printf("[ETH] DM9000 未识别! VID=0x%04X PID=0x%04X (期望 0x0A46/0x9000)\r\n",
+        printf("[ETH] DM9000 NOT FOUND! VID=0x%04X PID=0x%04X (expected 0x0A46/0x9000)\r\n",
                vid, pid);
         return -1;
     }
-    printf("[ETH] DM9000 识别成功 VID=0x%04X PID=0x%04X\r\n", vid, pid);
+    printf("[ETH] DM9000 OK VID=0x%04X PID=0x%04X\r\n", vid, pid);
 
     /* 读取 MAC 地址 (PAR 寄存器 0x10~0x15) */
     for (i = 0; i < 6; i++) {
@@ -286,7 +286,7 @@ static err_t tcp_recv_cb(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t 
         /* 客户端关闭连接 */
         g_tcp_client_connected = 0;
         g_client_pcb = NULL;
-        printf("[ETH] 客户端断开\r\n");
+        printf("[ETH] client disconnected\r\n");
         return ERR_OK;
     }
 
@@ -324,7 +324,7 @@ static void tcp_err_cb(void *arg, err_t err)
     (void)err;
     g_tcp_client_connected = 0;
     g_client_pcb = NULL;
-    printf("[ETH] TCP 错误: %d\r\n", err);
+    printf("[ETH] TCP error: %d\r\n", err);
 }
 
 /**
@@ -348,7 +348,7 @@ static err_t tcp_accept_cb(void *arg, struct tcp_pcb *newpcb, err_t err)
 
     if (g_tcp_client_connected) {
         /* 已有客户端，拒绝新连接 */
-        printf("[ETH] 拒绝新客户端 (已有连接)\r\n");
+        printf("[ETH] rejected new client (already connected)\r\n");
         tcp_abort(newpcb);
         return ERR_ABRT;
     }
@@ -363,7 +363,7 @@ static err_t tcp_accept_cb(void *arg, struct tcp_pcb *newpcb, err_t err)
     tcp_err(newpcb, tcp_err_cb);
     tcp_sent(newpcb, tcp_sent_cb);
 
-    printf("[ETH] 客户端已连接\r\n");
+    printf("[ETH] client connected\r\n");
     return ERR_OK;
 }
 
@@ -437,7 +437,7 @@ int eth_init(void)
 
     /* 2. LwIP 初始化 */
     lwip_init();
-    printf("[ETH] LwIP 初始化完成\r\n");
+    printf("[ETH] LwIP init OK\r\n");
 
     /* 3. 配置 IP 地址 */
     IP4_ADDR(&g_ipaddr,
@@ -450,32 +450,32 @@ int eth_init(void)
     /* 4. 添加网络接口 */
     if (netif_add(&g_netif, &g_ipaddr, &g_netmask, &g_gw,
                   NULL, ethernetif_init, netif_input) == NULL) {
-        printf("[ETH] netif_add 失败!\r\n");
+        printf("[ETH] netif_add failed!\r\n");
         return -2;
     }
 
     netif_set_default(&g_netif);
     netif_set_up(&g_netif);
 
-    printf("[ETH] 网络接口已建立: %d.%d.%d.%d\r\n",
+    printf("[ETH] netif up: %d.%d.%d.%d\r\n",
            g_eth_ip[0], g_eth_ip[1], g_eth_ip[2], g_eth_ip[3]);
 
     /* 5. 创建 TCP Server */
     g_tcp_pcb = tcp_new();
     if (g_tcp_pcb == NULL) {
-        printf("[ETH] TCP PCB 创建失败!\r\n");
+        printf("[ETH] tcp_new failed!\r\n");
         return -2;
     }
 
     if (tcp_bind(g_tcp_pcb, IP_ADDR_ANY, g_eth_port) != ERR_OK) {
-        printf("[ETH] TCP bind 端口 %d 失败!\r\n", g_eth_port);
+        printf("[ETH] tcp_bind port %d failed!\r\n", g_eth_port);
         return -2;
     }
 
     g_tcp_pcb = tcp_listen(g_tcp_pcb);
     tcp_accept(g_tcp_pcb, tcp_accept_cb);
 
-    printf("[ETH] TCP Server 监听端口 %d\r\n", g_eth_port);
+    printf("[ETH] TCP Server listening on port %d\r\n", g_eth_port);
 
     return 0;
 }
