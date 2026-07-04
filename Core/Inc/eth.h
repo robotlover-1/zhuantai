@@ -18,6 +18,9 @@ typedef enum {
 extern cmd_source_t g_cmd_src;
 
 /* ---- TCP 接收缓冲区 ---- */
+#ifdef ETH_RX_BUF_SIZE
+  #undef ETH_RX_BUF_SIZE
+#endif
 #define ETH_RX_BUF_SIZE  256
 extern u8   g_eth_rx_buf[ETH_RX_BUF_SIZE];
 extern u16  g_eth_rx_len;

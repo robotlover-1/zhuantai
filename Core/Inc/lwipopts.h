@@ -7,6 +7,11 @@
 #ifndef __LWIPOPTS_H
 #define __LWIPOPTS_H
 
+/* ---- 操作系统抽象层 (裸机) ---- */
+#define NO_SYS                      1
+#define LWIP_TCPIP_CORE_LOCKING     1
+#define LWIP_TCPIP_CORE_LOCKING_INPUT 1
+
 /* ---- 功能裁剪 ---- */
 #define LWIP_TCP                1
 #define LWIP_UDP                0

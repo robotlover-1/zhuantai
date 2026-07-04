@@ -478,3 +478,17 @@ int eth_init(void)
 
     return 0;
 }
+
+/* ================================================================ */
+/* LwIP 系统时间                                                      */
+/* ================================================================ */
+
+/**
+ * @brief  LwIP sys_now — 返回系统滴答 (ms), 供协议栈定时器使用
+ * @retval 系统上电以来的毫秒数
+ */
+u32_t sys_now(void)
+{
+    extern volatile uint32_t g_tick_ms;  /* defined in atim.c */
+    return g_tick_ms;
+}
