@@ -37,6 +37,13 @@ void rtc_init(void)
     RCC->APB1ENR |= RCC_APB1ENR_PWREN;
     PWR->CR |= PWR_CR_DBP;
 
+    /* 始终开启 LSI — 冷启动后 LSI 默认关闭，但 VBAT 域可能保留 INITS=1 */
+    RCC->CSR |= RCC_CSR_LSION;
+    tick = HAL_GetTick();
+    while ((RCC->CSR & RCC_CSR_LSIRDY) == 0)
+        if ((HAL_GetTick() - tick) > 500) break;
+    if ((RCC->CSR & RCC_CSR_LSIRDY) == 0) return;
+
     /* 解除RTC写保护：必须先写0xCA再写0x53，否则PRER/DR/TR写入无效 */
     RTC->WPR = 0xCA;
     RTC->WPR = 0x53;
@@ -44,12 +51,6 @@ void rtc_init(void)
     /* 若RTC尚未初始化，配置时钟和分频 */
     if ((RTC->ISR & RTC_ISR_INITS) == 0)
     {
-        RCC->CSR |= RCC_CSR_LSION;
-        tick = HAL_GetTick();
-        while ((RCC->CSR & RCC_CSR_LSIRDY) == 0)
-	        if ((HAL_GetTick() - tick) > 500) break;
-        if ((RCC->CSR & RCC_CSR_LSIRDY) == 0) return;
-
         RCC->BDCR |= RCC_BDCR_RTCSEL_1;
         RCC->BDCR |= RCC_BDCR_RTCEN;
 
@@ -100,7 +101,9 @@ void rtc_get_time_str(char *buf, int len)
 {
     if (buf == NULL || len < 32) return;
 
-    /* 先清除RSF，然后等待RTC影子寄存器同步完成 */
+    /* 先清除RSF（需解除写保护），然后等待RTC影子寄存器同步完成 */
+    RTC->WPR = 0xCA;
+    RTC->WPR = 0x53;
     RTC->ISR &= ~RTC_ISR_RSF;
     {
         uint32_t _tick = HAL_GetTick();
@@ -109,12 +112,14 @@ void rtc_get_time_str(char *buf, int len)
         }
     }
     if ((RTC->ISR & RTC_ISR_RSF) == 0) {
+        RTC->WPR = 0xFF;
         snprintf(buf, len, "---- -- -- --:--:--");
         return;
     }
 
     uint32_t dr = RTC->DR;
     uint32_t tr = RTC->TR;
+    RTC->WPR = 0xFF;  /* 恢复写保护 */
 
     snprintf(buf, len, "%04d-%02d-%02d %02d:%02d:%02d.%03u",
              2000 + rtc_bcd2dec((dr >> 16) & 0xFF),
