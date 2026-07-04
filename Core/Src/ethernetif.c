@@ -5,6 +5,7 @@
  * @note        实现 LwIP netif 接口: init / output / input
  ****************************************************************************************************
  */
+#include <string.h>
 #include "lwip/init.h"
 #include "lwip/netif.h"
 #include "lwip/tcpip.h"

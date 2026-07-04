@@ -11,6 +11,7 @@
 #include "eth.h"
 #include "delay.h"
 #include "stm32f4xx_hal.h"
+#include <string.h>
 #include "lwip/init.h"
 #include "lwip/netif.h"
 #include "lwip/tcp.h"
