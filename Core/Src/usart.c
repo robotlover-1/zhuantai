@@ -13,7 +13,6 @@
 /* ---- semihosting stubs (required by --no_semihosting) ---- */
 void _sys_exit(int x)       { x = x; }
 void _ttywrch(int ch)       { (void)ch; }
-int  _sys_open(const char *name, int mode, int len) { (void)name; (void)mode; (void)len; return -1; }
 
 int fputc(int ch, FILE *f)
 {
