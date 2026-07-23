@@ -1,13 +1,14 @@
 #include "step_motor.h"
 #include "atim.h"
 #include "rtc.h"
+#include <stdio.h>
 #include "math.h"
 #include "delay.h"
-#include <stdio.h>
 
  STEPPER_MOTOR step = {0};  
 
-extern u8 receive_flag;   //���Խ���ͨѶ ���н�����־
+extern u8 receive_flag;   //可以接收通讯 运行结束标志
+
 
 void step_motor_init(void)
 {
@@ -16,7 +17,7 @@ void step_motor_init(void)
     ST1_DIR_GPIO_CLK_ENABLE();           /* PA11 方向 */
     ST1_EN_GPIO_CLK_ENABLE();            /* PC1 使能 */
     ST1_ZERO_GPIO_CLK_ENABLE();          /* PC0 回零气缸 */
-    ST1_ZERO1_GPIO_CLK_ENABLE();         /* PF8 回零检测 */
+    ST1_ZERO1_GPIO_CLK_ENABLE();         /* PF8 回零完成检测 */
     ST1_END_GPIO_CLK_ENABLE();           /* PF9 光电到位 */
     ST1_IO_GPIO_CLK_ENABLE();            /* PC5 IO/拍照 */
     ST1_DONE_GPIO_CLK_ENABLE();          /* PC4 到位脉冲 */
@@ -109,138 +110,134 @@ void step_motor_init(void)
     gpio_init_struct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(ST1_HAL3_GPIO_PORT, &gpio_init_struct);
 
-    /* PC5: 拍照信号 (初始化已在上面作为ST1_IO) */
     ST1_EN(0);  /* 初始释放使能 */
 }
-
-
-/********************************************���μӼ���***********************************************/
-speedRampData g_srd               = {STOP,CW,0,0,0,0,0};  /* �Ӽ��ٱ��� */
-__IO int32_t  g_step_position     = 0;                    /* ��ǰλ�� */
-__IO uint8_t  g_motion_sta        = 0;                    /* �Ƿ����˶���0��ֹͣ��1���˶� */
-__IO uint32_t g_add_pulse_count   = 0;                    /* ��������ۼ� */
+speedRampData g_srd               = {STOP,CW,0,0,0,0,0};  /* 加减速变量 */
+__IO int32_t  g_step_position     = 0;                    /* 当前位置 */
+__IO uint8_t  g_motion_sta        = 0;                    /* 是否在运动？0：停止，1：运动 */
+__IO uint32_t g_add_pulse_count   = 0;                    /* 脉冲个数累计 */
        
-extern int32_t step_all;	    //�����ܲ���
-extern int32_t step_decel_2;  //���ٽ��׽׶Σ���һ�μ���
-extern int32_t step_accel_2;  //���ټ��ٽ׶Σ��ڶ��μ���
-extern	int32_t step_max;     //��������ٶ�����
-extern	int32_t step_max_1;     //��������ٶ�����
+extern int32_t step_all;	    //运行总步数
+extern int32_t step_decel_2;  //减速进孔阶段，第一次减速
+extern int32_t step_accel_2;  //快速加速阶段，第二次加速
+extern	int32_t step_max;     //最大运行速度限制
+extern	int32_t step_max_1;     //最大运行速度限制
 
-//�������������ٶȣ����ٶȣ�����Ӽ��ٵĲ�����С step,accel,decel,speed
-//step:�ܲ���
-//step1:���������������ײ���
-//step2�����������������ײ���
-//accel�����׼��ٶ�
-//decel�����׼��ٶ�
-//speed����������ٶ�
+//给定步数，加速度，减速度，计算加减速的步数大小 step,accel,decel,speed
+//step:总步数
+//step1:出孔脉冲数，出孔步数
+//step2：进孔脉冲数，进孔步数
+//accel：出孔加速度
+//decel：进孔加速度
+//speed：最高运行速度
 	void create_t_ctrl_param(int32_t step,int32_t step1, int32_t accel, int32_t step2,int32_t decel, int32_t speed)
 {
 	if(step==0)
 		{
 			return;
 		}
-	if(g_motion_sta != STOP)        /* ֻ�������������ֹͣ��ʱ��ż���*/
+	if(g_motion_sta != STOP)        /* 只允许步进电机在停止的时候才继续*/
         return;
-	//***************�������*********************************//
-	  //������������10000������������λ20000
-//	   if(step>=10000 && step>0)   //������������Ϊ16000����������λ
+	//***************计算参数*********************************//
+	  //当脉冲数大于10000，即走两个工位20000
+//	   if(step>=10000 && step>0)   //当运行脉冲数为16000，即两个工位
 //		 {
 //			 step=10000;
 //		 }
-//		 else if(step<=-10000 && step<0) //������������Ϊ-16000��������λ
+//		 else if(step<=-10000 && step<0) //当运行脉冲数为-16000，两个工位
 //		 {
 //			 step=-10000;
 //		 }		    
 	   if(step<0)
 			{
 				step_all=-step;
-				g_srd.step_decel1=step_all-step2-step_decel_2;            //����1����
-        g_srd.step_decel2=step_all-step2;        //����2����
+				g_srd.step_decel1=step_all-step2-step_decel_2;            //减速1步数
+        g_srd.step_decel2=step_all-step2;        //减速2步数
 			}else
 			{
 				step_all=step;
-				g_srd.step_decel1=step_all-step2-step_decel_2;            //����1����
-        g_srd.step_decel2=step_all-step2;        //����2����
+				g_srd.step_decel1=step_all-step2-step_decel_2;            //减速1步数
+        g_srd.step_decel2=step_all-step2;        //减速2步数
 			}
 			
-		 step_max=12000/speed;  //��������ٶ�ʱ��delay�ļ���
-	   g_srd.step_accel1=0;           //��ʼ����1���� 
-     g_srd.step_accel2=step1;        //����2����
-	   g_srd.step_run=step1+step_accel_2;               //�������в���
+		 step_max=12000/speed;  //最大运行速度时，delay的计算
+	   g_srd.step_accel1=0;           //开始加速1步数 
+     g_srd.step_accel2=step1;        //加速2步数
+	   g_srd.step_run=step1+step_accel_2;               //匀速运行步数
 					      
-    if(step < 0)                    /* ����Ϊ���� */
+    if(step < 0)                    /* 步数为负数 */
     {   
-        g_srd.dir = CCW;            /* ��ʱ�뷽����ת 0*/
+        g_srd.dir = CCW;            /* 逆时针方向旋转 0*/
         ST1_DIR(CCW);
-        step = -step-1;               /* ��ȡ��������ֵ */
+        step = -step-1;               /* 获取步数绝对值 */
     }
     else
     {
-        g_srd.dir = CW;             /* ˳ʱ�뷽����ת 1*/
+        g_srd.dir = CW;             /* 顺时针方向旋转 1*/
         ST1_DIR(CW);
 			  step = step-1;
     }
-   if(step != 0)              /* ���Ŀ���˶�������Ϊ0*/
+   if(step != 0)              /* 如果目标运动步数不为0*/
     {
-         g_srd.step_delay=6220;   //���ٶ�4.5��ÿ��
+         g_srd.step_delay=6220;   //初速度4.5度每秒
 		}
-    g_motion_sta = 1;                                           /* ���Ϊ�˶�״̬ */
+    g_motion_sta = 1;                                           /* 电机为运动状态 */
 	//	receive_flag=1;
 		
-		/*****������ټӼ���ʱ�ļӼ���******/
+		/*****计算快速加减速时的加减速******/
 	
-		g_srd.step_accel1_delay=accel;    //���׼��ٶ�
-		g_srd.step_decel1_delay=decel;    //���׼��ٶ�
+		g_srd.step_accel1_delay=accel;    //出孔加速度
+		g_srd.step_decel1_delay=decel;    //进孔加速度
 		
-		g_srd.step_accel2_delay=(6220-step_max-step1*accel)/step_accel_2;  
-		g_srd.step_decel2_delay=(6220-step_max-step2*decel)/step_decel_2;
+		g_srd.step_accel2_delay=(2666-step_max-step1*accel)/step_accel_2;  
+		g_srd.step_decel2_delay=(2666-step_max-step2*decel)/step_decel_2;
 		
-		//�������ƣ���ֹΪ��ֵ
-		if(6220-step_max-step1*accel<0)
+		//计算限制，防止为负值
+		if(2666-step_max-step1*accel<0)
 		{
 			g_srd.step_accel2_delay=10;
 		}
 		
-		if(6220-step_max-step2*decel<0)
+		if(2666-step_max-step2*decel<0)
 		{
 			g_srd.step_decel2_delay=10;
 		}
 		
 		g_srd.run_state = ACCEL;
 		
-     HAL_TIM_OC_Start_IT(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY);                                 /* ʹ�ܶ�ʱ��ͨ�� */
+     HAL_TIM_OC_Start_IT(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY);                                 /* 使能定时器通道 */
 }
 
 
 
 /**
-  * @brief  ��ʱ���Ƚ��ж�
-  * @param  htim����ʱ�����ָ��
-  * @note   ��
-  * @retval ��
+  * @brief  定时器比较中断
+  * @param  htim：定时器句柄指针
+  * @note   无
+  * @retval 无
   */
 
 extern  int32_t step_count; 
 extern  u8 printf_flag;
 extern  int time_out;
-extern int step_pass;                //�����ٶ�
-extern int32_t pulse_compensate;     //����������
-extern int speed_rcc;                //�����ٶ�
-extern int level_speed;              //����leve�µ��������
-//���й켣ѡ��level=0��1��2��3��4��5��6��7
-//level=0��18��ÿ�������˶�
-//level=1������8000����  �����ֶμӼ���
-//level=2����16000���壬�м���ٹ��ף���������������   ��pluse_compensate   **************
-//level=3�� �������岹�� һ����λ����  ������8000+pulse_compensate  ������-pulse_compensate;  **********
-//level=4�� ������������������λ2      ����16000+pulse_compensate   ������-pulse_compensate;  **********
-//level=5�� ���׶�������������100���٣�100����
-//level=6�� ��8000����������������  ��pluse_compensate    *********
-//level=7:  �Խ��׶��ٶ���������
+extern int step_pass;                //过孔速度
+extern int32_t pulse_compensate;     //进孔脉冲数
+extern int speed_rcc;                //进孔速度
+extern int level_speed;              //不用leve下的运行情况
+//运行轨迹选择，level=0、1、2、3、4、5、6、7
+//level=0：18度每秒匀速运动
+//level=1：运行8000脉冲  完整分段加减速
+//level=2：走16000脉冲，中间低速过孔，最后进孔匀速运行   走pluse_compensate   **************
+//level=3： 反向脉冲补偿 一个孔位运行  即运行8000+pulse_compensate  再运行-pulse_compensate;  **********
+//level=4： 补偿脉冲运行两个工位2      运行16000+pulse_compensate   再运行-pulse_compensate;  **********
+//level=5： 进孔段脉冲数，包含100加速，100减速
+//level=6： 走8000，最后进孔匀速运行  走pluse_compensate    *********
+//level=7:  以进孔段速度匀速运行
 void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 {    
     uint32_t tim_count = 0;
     uint32_t tmp = 0;
-    static uint8_t i = 0;                              /* ��ʱ��ʹ�÷�תģʽ����Ҫ���������жϲ����һ���������� */
+    static uint8_t i = 0;                              /* 定时器使用翻转模式，需要进入两次中断才输出一个完整脉冲 */
 	  static uint8_t j = 0;  
 	    
     if(htim->Instance==TIM8)
@@ -248,17 +245,17 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 			if(level_speed==0)
 			{
 				tim_count = __HAL_TIM_GET_COUNTER(&g_timx_pwm_chy_handle);
-			  tmp = tim_count + 1000/2;      //18��ÿ��
+			  tmp = tim_count + 1000/2;      //18度每秒
        __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY,tmp);
-				j++;                                                /* ��ʱ���жϴ�������ֵ */
-        if(j == 2)                                          /* 2�Σ�˵���Ѿ����һ���������� */
+				j++;                                                /* 定时器中断次数计数值 */
+        if(j == 2)                                          /* 2次，说明已经输出一个完整脉冲 */
         { 
          step_count++;
 					if(step_count >=step_all) 
 					{
 						   step_count = 0;                             						
 							HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-							g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+							g_motion_sta = 0;                           /* 电机为停止状态  */
 							//receive_flag=0;
 						 // printf_flag=1;
 							g_add_pulse_count=0;
@@ -269,20 +266,20 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 					j=0;
 				}		
 			}			
-			else if	(level_speed==1)	  //һ����λ������ͣ�������� ��������12000���� T��
+			else if	(level_speed==1)	  //一个工位，到孔停，不补偿 ，即运行12000脉冲 T型
 			{
 		    tim_count = __HAL_TIM_GET_COUNTER(&g_timx_pwm_chy_handle);
-			  tmp = tim_count + g_srd.step_delay/2;    //���ٶ�4.5��ÿ��           
+			  tmp = tim_count + g_srd.step_delay/2;    //初速度4.5度每秒           
        __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY,tmp);
-        i++;                                                /* ��ʱ���жϴ�������ֵ */
-        if(i == 2)                                          /* 2�Σ�˵���Ѿ����һ���������� */
+        i++;                                                /* 定时器中断次数计数值 */
+        if(i == 2)                                          /* 2次，说明已经输出一个完整脉冲 */
         { 				
-					  switch(g_srd.run_state)                         /* �Ӽ������߽׶� */
+					  switch(g_srd.run_state)                         /* 加减速曲线阶段 */
             {
 							case STOP:
                 step_count = 0;                                        
                 HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-                g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+                g_motion_sta = 0;                           /* 电机为停止状态  */
 							  //receive_flag=0;
 							 // printf_flag=1;
 							  step_count=0;	
@@ -292,92 +289,92 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 							
             case ACCEL:
                 step_count++;                               					  
-								if(0<step_count & step_count<=g_srd.step_accel2)   //��һ�μ�������	
+								if(0<step_count & step_count<=g_srd.step_accel2)   //第一段加速运行	
 								{
-									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //��һ�μ��� delay�ı�
-									 if(g_srd.step_delay<step_max)  //��������ٶ�����
+									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //第一次加速 delay改变
+									 if(g_srd.step_delay<step_max)  //设置最大速度限制
 										{
 											g_srd.step_delay=step_max;
 										}
 								}
-								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)//�ڶ��μ���
+								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)//第二次加速
                 {
-									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay; //�ڶ��μ��� delay�ı�
+									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay; //第二次加速 delay改变
 									
-									 if(g_srd.step_delay<step_max)  //��������ٶ�����
+									 if(g_srd.step_delay<step_max)  //设置最大速度限制
 										{
 											g_srd.step_delay=step_max;
 										}
                 }
-								else if(g_srd.step_run<step_count)          //������������
+								else if(g_srd.step_run<step_count)          //进入匀速运行
                 {
-                    g_srd.run_state = RUN;                  /* ����Ϊ��������״̬ */
+                    g_srd.run_state = RUN;                  /* 设置为匀速运行状态 */
                 }
                 break;
 								
             case RUN:             
-                step_count++;                               /* ������1 */              
-								if( g_srd.step_run<step_count & step_count<=g_srd.step_decel1)  //��������
+                step_count++;                               /* 步数加1 */              
+								if( g_srd.step_run<step_count & step_count<=g_srd.step_decel1)  //匀速运行
 								{
 									g_srd.step_delay =g_srd.step_delay ;
 								}
-								else if( g_srd.step_decel1<step_count)         /* ��Ҫ��ʼ���� */
+								else if( g_srd.step_decel1<step_count)         /* 需要开始减速 */
                 {
-                    g_srd.run_state = DECEL;                /* ״̬�ı�Ϊ���� */
+                    g_srd.run_state = DECEL;                /* 状态改变为减速 */
                 }
                 break;
 
             case DECEL:
-                step_count++;                               /* ������1 */                          
-								if( g_srd.step_decel1<step_count & step_count<=g_srd.step_decel2)         //��һ�μ���
+                step_count++;                               /* 步数加1 */                          
+								if( g_srd.step_decel1<step_count & step_count<=g_srd.step_decel2)         //第一次减速
 								{
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;         
 								}
-								else if( g_srd.step_decel2<step_count & step_count<=step_all-2)           //�ڶ��μ���
+								else if( g_srd.step_decel2<step_count & step_count<=step_all-2)           //第二次减速
 								{    
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_accel1_delay;
 								}              
-								else if(step_count >step_all-2)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+								else if(step_count >step_all-2)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                     g_srd.run_state = STOP;
                 }
                 break;
             }
-						 i = 0;                                          /* ���㶨ʱ���жϴ�������ֵ */
+						 i = 0;                                          /* 清零定时器中断次数计数值 */
         }				
 			}
-			else if	(level_speed==2)//������ʱ���м���ٹ��ף�������  ������24000���壬���������������
+			else if	(level_speed==2)//跨两孔时，中间低速过孔，不补偿  即运行24000脉冲，最后脉冲匀速运行
 			{
 		    tim_count = __HAL_TIM_GET_COUNTER(&g_timx_pwm_chy_handle);
 			  tmp = tim_count + g_srd.step_delay/2;             
        __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY,tmp);
-        i++;                                                /* ��ʱ���жϴ�������ֵ */
-        if(i == 2)                                          /* 2�Σ�˵���Ѿ����һ���������� */
+        i++;                                                /* 定时器中断次数计数值 */
+        if(i == 2)                                          /* 2次，说明已经输出一个完整脉冲 */
         { 				
-					  switch(g_srd.run_state)                         /* �Ӽ������߽׶� */
+					  switch(g_srd.run_state)                         /* 加减速曲线阶段 */
             {
 							case STOP:
-                step_count = 0;                             /* ���㲽�������� */
-                /* �ر�ͨ��*/
+                step_count = 0;                             /* 清零步数计数器 */
+                /* 关闭通道*/
                 HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-                g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+                g_motion_sta = 0;                           /* 电机为停止状态  */
 							//  receive_flag=0;
 							 // printf_flag=1;
 							  step_count=0;
               //  HAL_TIM_Base_Stop_IT(&TIM5_Handler);
                // time_out=0;							
                 break;
-            case ACCEL:     //��һ�μ��ٽ׶�                      
+            case ACCEL:     //第一次加速阶段                      
                 step_count++;                               					 
-								if(0<step_count & step_count<=g_srd.step_accel2) 	                     //���е�һ�μ���
+								if(0<step_count & step_count<=g_srd.step_accel2) 	                     //运行第一段加速
 								{
 									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay;
-									 if(g_srd.step_delay<step_max)  //��������ٶ�����
+									 if(g_srd.step_delay<step_max)  //设置最大速度限制
 										{
 											g_srd.step_delay=step_max;
 										}
 								}
-								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)     //���еڶ��μ���
+								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)     //运行第二段加速
                 {
 									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay;
 									if(g_srd.step_delay<step_max)
@@ -385,81 +382,81 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 											g_srd.step_delay=step_max;
 										}
                 }
-								else if(g_srd.step_run<step_count)                                      /* ����Ƿ�����Ҫ���ٵĲ��� */
+								else if(g_srd.step_run<step_count)                                      /* 检查是否到了需要匀速的步数 */
                 {
-                    g_srd.run_state = RUN;                                              /* ����Ϊ��������״̬ */	
+                    g_srd.run_state = RUN;                                              /* 设置为匀速运行状态 */	
                 }
                 break;
             case RUN:
                 step_count++;  
-						    g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
-               if( g_srd.step_run<step_count & step_count<=g_srd.step_decel1)            //��������
+						    g_srd.step_decel1=step_all-300;  //设置300的减速步数过孔
+               if( g_srd.step_run<step_count & step_count<=g_srd.step_decel1)            //匀速运行
 								{
 									g_srd.step_delay =g_srd.step_delay ;
-									                                 //��¼��һ�����е�����ٶ�
+									                                 //记录第一段运行的最大速度
 									step_max_1=g_srd.step_delay;
 								}
-								else if( g_srd.step_decel1<step_count)                                   /* ��Ҫ��ʼ���� */
+								else if( g_srd.step_decel1<step_count)                                   /* 需要开始减速 */
                 {
-                    g_srd.run_state = DECEL;                                             /* ״̬�ı�Ϊ���� */
+                    g_srd.run_state = DECEL;                                             /* 状态改变为减速 */
                 }   
                 break; 
 						case DECEL:
                 step_count++;
-						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
-							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+						   g_srd.step_decel1=step_all-300;  //设置300的减速步数过孔
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* 需要开始减速 */
 								{
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
-									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 if( g_srd.step_delay>step_pass)  //限制低速过孔的速度
 									 {
 										 g_srd.step_delay =step_pass;   
 									 }
 								}												
-                /* ����Ƿ�Ϊ���һ�� */
-								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                /* 检查是否为最后一步 */
+								else if(step_count >step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                   g_srd.run_state = ACCEL2;								
 									step_count=0;	                 								  
                 }
                 break;									
 						case ACCEL2:
-                step_count++;                               /* ������1*/						 
-								 if(0<step_count & step_count<=100) //��֤�ȶ�����               /* ������׵����壬��֤�����ٶȽϵ�*/
+                step_count++;                               /* 步数加1*/						 
+								 if(0<step_count & step_count<=100) //保证稳定过孔               /* 增大过孔的脉冲，保证过孔速度较低*/
 						     {
 									 g_srd.step_delay = g_srd.step_delay;
 								 }
 						    else if(100<step_count & step_count<=g_srd.step_run) 	
 								{
-									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //���ټ���
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //快速加速
 //									if(g_srd.step_delay<step_max)
 //										{
 //											g_srd.step_delay=step_max;
 //										}									
-									if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+									if(g_srd.step_delay<step_max_1)  //最大速度与第一段保持一致
 										{
 											g_srd.step_delay=step_max_1;
 									  }
 								}								
-								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+								else if(g_srd.step_run<step_count)         /* 检查是否到了需要匀速的步数 */
                 {
-                  g_srd.run_state = RUN2;                  /* ����Ϊ��������״̬ */
+                  g_srd.run_state = RUN2;                  /* 设置为匀速运行状态 */
                 }
 						
                 break;								
 					 case RUN2:
                 step_count++;                                          
-               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //�ܲ���-����������-����ٲ���
+               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //总步数-进孔脉冲数-快减速步数
 								{
 									g_srd.step_delay =g_srd.step_delay ;
 								}
-								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* ��Ҫ��ʼ���� */
+								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* 需要开始减速 */
                 {
-                   g_srd.run_state = DECEL2;                /* ״̬�ı�Ϊ���� */
+                   g_srd.run_state = DECEL2;                /* 状态改变为减速 */
                 }   
                 break; 
 					case DECEL2:
                 step_count++;                                      
-							if( step_all-pulse_compensate-step_decel_2<step_count & step_count<=step_all-pulse_compensate)         /* ��Ҫ��ʼ���� */
+							if( step_all-pulse_compensate-step_decel_2<step_count & step_count<=step_all-pulse_compensate)         /* 需要开始减速 */
 								{
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
 									if(g_srd.step_delay>speed_rcc)
@@ -467,39 +464,39 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 										 g_srd.step_delay=speed_rcc;
 									 }	
 								}															 
-								else if(step_count >step_all-pulse_compensate)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+								else if(step_count >step_all-pulse_compensate)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                     g_srd.run_state = RUN3;
                 }
                 break;	
 					case RUN3:
                step_count++;
-					    if(step_all-pulse_compensate<step_count&step_count<step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+					    if(step_all-pulse_compensate<step_count&step_count<step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                     g_srd.step_delay=speed_rcc;
                 }
-							else if(step_count >=step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+							else if(step_count >=step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
 									  g_srd.run_state = STOP;
                 }
 							break;		
             }
-						 i = 0;                                          /* ���㶨ʱ���жϴ�������ֵ */
+						 i = 0;                                          /* 清零定时器中断次数计数值 */
         }				
 			}
-			 else if	(level_speed==3)	  //�������岹�� һ����λ����  ������12000+pulse_compensate
+			 else if	(level_speed==3)	  //反向脉冲补偿 一个孔位运行  即运行12000+pulse_compensate
 			{	
 				tim_count = __HAL_TIM_GET_COUNTER(&g_timx_pwm_chy_handle);
 			  tmp = tim_count + g_srd.step_delay/2;             
        __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY,tmp);
-        i++;                                                /* ��ʱ���жϴ�������ֵ */
-        if(i == 2)                                          /* 2�Σ�˵���Ѿ����һ���������� */
+        i++;                                                /* 定时器中断次数计数值 */
+        if(i == 2)                                          /* 2次，说明已经输出一个完整脉冲 */
         { 				
 					  switch(g_srd.run_state)                        
             {
 							case STOP:
                 step_count = 0;                           
-                /* �ر�ͨ��*/
+                /* 关闭通道*/
                 HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
                 g_motion_sta = 0;                          
 							 // receive_flag=0;
@@ -510,7 +507,7 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
                 break;
             case ACCEL:                                        
                 step_count++;                             					 
-								if(0<step_count & step_count<=g_srd.step_accel2) 	                        //��һ�μ��ٽ׶�   
+								if(0<step_count & step_count<=g_srd.step_accel2) 	                        //第一次加速阶段   
 								{
 									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay;
 									if(g_srd.step_delay<step_max)
@@ -518,7 +515,7 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 											g_srd.step_delay=step_max;
 										}
 								}
-								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)        //�ڶ��μ���
+								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)        //第二段加速
                 {
 									  g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay;
 									if(g_srd.step_delay<step_max)
@@ -526,9 +523,9 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 											g_srd.step_delay=step_max;
 										}
                 }
-								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+								else if(g_srd.step_run<step_count)         /* 检查是否到了需要匀速的步数 */
                 {
-                  g_srd.run_state = RUN;                   /* ����Ϊ��������״̬ */
+                  g_srd.run_state = RUN;                   /* 设置为匀速运行状态 */
                 }
                 break;
             case RUN:
@@ -537,22 +534,22 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 								{
 									g_srd.step_delay =g_srd.step_delay ;
 								}
-								else if( g_srd.step_decel1<step_count)         /* ��Ҫ��ʼ���� */
+								else if( g_srd.step_decel1<step_count)         /* 需要开始减速 */
                 {
-                  g_srd.run_state = DECEL;                      /* ״̬�ı�Ϊ���� */
+                  g_srd.run_state = DECEL;                      /* 状态改变为减速 */
                 }   
                 break; 
 						case DECEL:
                 step_count++;                             
-							if( g_srd.step_decel1<step_count & step_count<=step_all-1)         /* ��Ҫ��ʼ���� */
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)         /* 需要开始减速 */
 								{
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
-									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 if( g_srd.step_delay>step_pass)  //限制低速过孔的速度
 									 {
 										  g_srd.step_delay =step_pass;   
 									 }
 								}												              
-								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+								else if(step_count >step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                     g_srd.run_state = ACCEL2;
 									  step_count=0;									  
@@ -587,19 +584,19 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 								{
 									g_srd.step_delay =g_srd.step_delay ;
 								}
-								else if( pulse_compensate-100<step_count)         /* ��Ҫ��ʼ���� */
+								else if( pulse_compensate-100<step_count)         /* 需要开始减速 */
                 {
-                  g_srd.run_state = DECEL2;                /* ״̬�ı�Ϊ���� */
+                  g_srd.run_state = DECEL2;                /* 状态改变为减速 */
                 }   
                 break; 
 					case DECEL2:
                 step_count++;                                          
-							if( pulse_compensate-100<step_count & step_count<=pulse_compensate-2)         /* ��Ҫ��ʼ���� */
+							if( pulse_compensate-100<step_count & step_count<=pulse_compensate-2)         /* 需要开始减速 */
 								{
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
 								}
-                /* ����Ƿ�Ϊ���һ�� */
-								else if(step_count >pulse_compensate-2)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                /* 检查是否为最后一步 */
+								else if(step_count >pulse_compensate-2)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                    g_srd.run_state = RUN3;
 									 step_count=0;
@@ -621,41 +618,41 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 								}					      
 						    break;
             }
-						 i = 0;                                          /* ���㶨ʱ���жϴ�������ֵ */
+						 i = 0;                                          /* 清零定时器中断次数计数值 */
         }							 
 			 }
-			else if	(level_speed==4)	  //������������������λ2    ����24000+pulse_compensate
+			else if	(level_speed==4)	  //补偿脉冲运行两个工位2    运行24000+pulse_compensate
 			{
        tim_count = __HAL_TIM_GET_COUNTER(&g_timx_pwm_chy_handle);
 			  tmp = tim_count + g_srd.step_delay/2;             
        __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY,tmp);
-        i++;                                                /* ��ʱ���жϴ�������ֵ */
-        if(i == 2)                                          /* 2�Σ�˵���Ѿ����һ���������� */
+        i++;                                                /* 定时器中断次数计数值 */
+        if(i == 2)                                          /* 2次，说明已经输出一个完整脉冲 */
         { 				
-					  switch(g_srd.run_state)                         /* �Ӽ������߽׶� */
+					  switch(g_srd.run_state)                         /* 加减速曲线阶段 */
             {
 							case STOP:
-                step_count = 0;                             /* ���㲽�������� */
-                /* �ر�ͨ��*/
+                step_count = 0;                             /* 清零步数计数器 */
+                /* 关闭通道*/
                 HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-                g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+                g_motion_sta = 0;                           /* 电机为停止状态  */
 							//  receive_flag=0;
 							//  printf_flag=1;
 							  step_count=0;	
               //  HAL_TIM_Base_Stop_IT(&TIM5_Handler);
               //  time_out=0;														
                 break;
-            case ACCEL:     //��һ�μ��ٽ׶�                       
+            case ACCEL:     //第一次加速阶段                       
                 step_count++;                             					 
 								if(0<step_count & step_count<=g_srd.step_accel2) 	
 								{
 									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay;
-									 if(g_srd.step_delay<step_max)  //��������ٶ�����
+									 if(g_srd.step_delay<step_max)  //设置最大速度限制
 										{
 											g_srd.step_delay=step_max;
 										}
 								}
-								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)         /* 检查是否到了需要匀速的步数 */
                 {
 									  g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay;
 									if(g_srd.step_delay<step_max)
@@ -663,37 +660,37 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 											g_srd.step_delay=step_max;
 										}
                 }
-								else if(g_srd.step_run<step_count)          /* ����Ƿ�����Ҫ���ٵĲ��� */
+								else if(g_srd.step_run<step_count)          /* 检查是否到了需要匀速的步数 */
                 {
-                    g_srd.run_state = RUN;                  /* ����Ϊ��������״̬ */
+                    g_srd.run_state = RUN;                  /* 设置为匀速运行状态 */
                 }
                 break;
             case RUN:
                 step_count++;  
-						     g_srd.step_decel1=step_all-300;  //����500�ļ��ٲ�������
+						     g_srd.step_decel1=step_all-300;  //设置500的减速步数过孔
                if( g_srd.step_run<step_count & step_count<=g_srd.step_decel1) 
 								{
 									g_srd.step_delay =g_srd.step_delay ;
 									step_max_1=g_srd.step_delay;
 								}
-								else if( g_srd.step_decel1<step_count)         /* ��Ҫ��ʼ���� */
+								else if( g_srd.step_decel1<step_count)         /* 需要开始减速 */
                 {
-                   g_srd.run_state = DECEL;                    /* ״̬�ı�Ϊ���� */
+                   g_srd.run_state = DECEL;                    /* 状态改变为减速 */
                 }   
                 break; 
 						case DECEL:
                 step_count++;
-                g_srd.step_decel1=step_all-300;  //����500�ļ��ٲ�������						
-							if( g_srd.step_decel1<step_count & step_count<=step_all-1)         /* ��Ҫ��ʼ���� */
+                g_srd.step_decel1=step_all-300;  //设置500的减速步数过孔						
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)         /* 需要开始减速 */
 								{
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
-									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 if( g_srd.step_delay>step_pass)  //限制低速过孔的速度
 									 {
 										  g_srd.step_delay =step_pass;   
 									 }
 								}												
-                /* ����Ƿ�Ϊ���һ�� */
-								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                /* 检查是否为最后一步 */
+								else if(step_count >step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                     g_srd.run_state = ACCEL2;
 									 // g_srd.step_delay =4000;
@@ -702,25 +699,25 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
                 break;									
 						case ACCEL2:        
                 step_count++; 
-						   if(0<step_count & step_count<=100) //��֤�ȶ�����      /*����������壬��֤���ٽ���*/
+						   if(0<step_count & step_count<=100) //保证稳定过孔      /*增大过孔脉冲，保证低速进孔*/
 						     {
 									 g_srd.step_delay = g_srd.step_delay;
 								 }
-								else if(100<step_count & step_count<=g_srd.step_run) 	  //ֱ�ӿ����
+								else if(100<step_count & step_count<=g_srd.step_run) 	  //直接快加速
 								{									
 									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay;
 //									if(g_srd.step_delay<step_max)
 //										{
 //											g_srd.step_delay=step_max;
 //										}
-										if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+										if(g_srd.step_delay<step_max_1)  //最大速度与第一段保持一致
 										{
 											g_srd.step_delay=step_max_1;
 									  }
 								}								
-								else if(g_srd.step_run<step_count)           /* ����Ƿ�����Ҫ���ٵĲ��� */
+								else if(g_srd.step_run<step_count)           /* 检查是否到了需要匀速的步数 */
                 {
-                    g_srd.run_state = RUN2;                  /* ����Ϊ��������״̬ */
+                    g_srd.run_state = RUN2;                  /* 设置为匀速运行状态 */
                 }
 								 
                 break;								
@@ -730,23 +727,23 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 								{
 									g_srd.step_delay =g_srd.step_delay ;
 								}
-								else if( g_srd.step_decel1<step_count)         /* ��Ҫ��ʼ���� */
+								else if( g_srd.step_decel1<step_count)         /* 需要开始减速 */
                 {
-                  g_srd.run_state = DECEL2;                    /* ״̬�ı�Ϊ���� */
+                  g_srd.run_state = DECEL2;                    /* 状态改变为减速 */
                 }   
                 break; 
 					case DECEL2:
                 step_count++;                                         
-							if( g_srd.step_decel1<step_count & step_count<=step_all-1)         //ֱ�ӿ����
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)         //直接快减速
 								{
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
-									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 if( g_srd.step_delay>step_pass)  //限制低速过孔的速度
 									 {
 										  g_srd.step_delay =step_pass;   
 									 }
 								}												
-                /* ����Ƿ�Ϊ���һ�� */
-								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                /* 检查是否为最后一步 */
+								else if(step_count >step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                     g_srd.run_state = ACCEL3;
 									  step_count=0;									  
@@ -784,23 +781,23 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 								}					      
 						    break;
             }
-						 i = 0;                                          /* ���㶨ʱ���жϴ�������ֵ */
+						 i = 0;                                          /* 清零定时器中断次数计数值 */
         }								 			 
 		 }				 		 
-			else if	(level_speed==6)	  //��12000���壬�����������
+			else if	(level_speed==6)	  //走12000脉冲，最后匀速运行
 			{
 				 tim_count = __HAL_TIM_GET_COUNTER(&g_timx_pwm_chy_handle);
-			  tmp = tim_count + g_srd.step_delay/2;               /* ����Cֵ�������Ҫ��ת���ε�������Ҫ����2 */
+			  tmp = tim_count + g_srd.step_delay/2;               /* 整个C值里边是需要翻转两次的所以需要除以2 */
        __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY,tmp);
-        i++;                                                /* ��ʱ���жϴ�������ֵ */
-        if(i == 2)                                          /* 2�Σ�˵���Ѿ����һ���������� */
+        i++;                                                /* 定时器中断次数计数值 */
+        if(i == 2)                                          /* 2次，说明已经输出一个完整脉冲 */
         { 				
-					  switch(g_srd.run_state)                         /* �Ӽ������߽׶� */
+					  switch(g_srd.run_state)                         /* 加减速曲线阶段 */
             {
 						case STOP:
-                step_count = 0;                             /* ���㲽�������� */
+                step_count = 0;                             /* 清零步数计数器 */
                 HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-                g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+                g_motion_sta = 0;                           /* 电机为停止状态  */
 							 // receive_flag=0;
 							  step_count=0;							
 							 // printf_flag=1;
@@ -810,7 +807,7 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 
             case ACCEL:
                 step_count++;                          						 
-								if(0<step_count & step_count<=g_srd.step_accel2) 	                        //��һ�μ���
+								if(0<step_count & step_count<=g_srd.step_accel2) 	                        //第一段加速
 								{
 									 g_srd.step_delay = g_srd.step_delay-g_srd.step_accel1_delay;
 									if(g_srd.step_delay<step_max)																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																													
@@ -818,35 +815,35 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 											g_srd.step_delay=step_max;
 										}
 								}
-								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)         /* 检查是否到了需要匀速的步数 */
                 {
-									  g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay;          //�ڶ��μ���
+									  g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay;          //第二段加速
 									if(g_srd.step_delay<step_max)
 										{
 											g_srd.step_delay=step_max;
 										}
                 }
-								else if(g_srd.step_run<step_count)          /* ����Ƿ�����Ҫ���ٵĲ��� */
+								else if(g_srd.step_run<step_count)          /* 检查是否到了需要匀速的步数 */
                 {
-                    g_srd.run_state = RUN;                  /* ����Ϊ��������״̬ */
+                    g_srd.run_state = RUN;                  /* 设置为匀速运行状态 */
                 }
                 break;
 
             case RUN:    
                 step_count++;                                        
-								if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2)   //�������м��ٶ�Ϊ100
+								if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2)   //设置运行减速段为100
 								{
 									g_srd.step_delay =g_srd.step_delay ;
 								}
-								else if( step_all-pulse_compensate-step_decel_2<step_count)                           /* ��Ҫ��ʼ���� */
+								else if( step_all-pulse_compensate-step_decel_2<step_count)                           /* 需要开始减速 */
                 {
-                    g_srd.run_state = DECEL;                                /* ״̬�ı�Ϊ���� */
+                    g_srd.run_state = DECEL;                                /* 状态改变为减速 */
                 }
                 break;
 
            case DECEL:
                 step_count++;                                      
-							if( step_all-pulse_compensate-step_decel_2<step_count & step_count<=step_all-pulse_compensate)         /* ��Ҫ��ʼ���� */
+							if( step_all-pulse_compensate-step_decel_2<step_count & step_count<=step_all-pulse_compensate)         /* 需要开始减速 */
 								{
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
 									if(g_srd.step_delay>speed_rcc)
@@ -854,41 +851,41 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 										 g_srd.step_delay=speed_rcc;
 									 }	
 								}															 
-								else if(step_count >step_all-pulse_compensate)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+								else if(step_count >step_all-pulse_compensate)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                     g_srd.run_state = RUN2;
                 }
                 break;	
 					 case RUN2:
                step_count++;				
-					    if(step_all-pulse_compensate<step_count & step_count<=step_all-2)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+					    if(step_all-pulse_compensate<step_count & step_count<=step_all-2)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                     g_srd.step_delay=speed_rcc;
                 }
-							else if(step_count >step_all-2)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+							else if(step_count >step_all-2)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
 									  g_srd.run_state = STOP;
                 }
 							break;
             }
-						 i = 0;                                          /* ���㶨ʱ���жϴ�������ֵ */
+						 i = 0;                                          /* 清零定时器中断次数计数值 */
         }				 
 			 }
-			else if(level_speed==7)     //�Խ��׶��ٶ���������
+			else if(level_speed==7)     //以进孔段速度匀速运行
 			{
 				tim_count = __HAL_TIM_GET_COUNTER(&g_timx_pwm_chy_handle);
-			  tmp = tim_count + speed_rcc/2;               /* ����Cֵ�������Ҫ��ת���ε�������Ҫ����2 */
+			  tmp = tim_count + speed_rcc/2;               /* 整个C值里边是需要翻转两次的所以需要除以2 */
        __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY,tmp);
-				j++;                                                /* ��ʱ���жϴ�������ֵ */
-        if(j == 2)                                          /* 2�Σ�˵���Ѿ����һ���������� */
+				j++;                                                /* 定时器中断次数计数值 */
+        if(j == 2)                                          /* 2次，说明已经输出一个完整脉冲 */
         { 
          step_count++;
 					if(step_count >=step_all) 
 					{
-					 step_count = 0;                             /* ���㲽�������� */
-						/* �ر�ͨ��*/
+					 step_count = 0;                             /* 清零步数计数器 */
+						/* 关闭通道*/
 						HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-						g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+						g_motion_sta = 0;                           /* 电机为停止状态  */
 						//receive_flag=0;
 					//	printf_flag=1;						
 						g_add_pulse_count=0;
@@ -899,38 +896,38 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 					j=0;
 				}		
 			}
-			else if(level_speed==8)     //�����ף��м���ٹ��ף�������������36000���壬�����������
+			else if(level_speed==8)     //跨三孔，中间低速过孔，不补偿，运行36000脉冲，最后匀速运行
 			{
 				 tim_count = __HAL_TIM_GET_COUNTER(&g_timx_pwm_chy_handle);
 			  tmp = tim_count + g_srd.step_delay/2;             
        __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY,tmp);
-        i++;                                                /* ��ʱ���жϴ�������ֵ */
-        if(i == 2)                                          /* 2�Σ�˵���Ѿ����һ���������� */
+        i++;                                                /* 定时器中断次数计数值 */
+        if(i == 2)                                          /* 2次，说明已经输出一个完整脉冲 */
         { 				
-					  switch(g_srd.run_state)                         /* �Ӽ������߽׶� */
+					  switch(g_srd.run_state)                         /* 加减速曲线阶段 */
             {
 							case STOP:
-                step_count = 0;                             /* ���㲽�������� */
-                /* �ر�ͨ��*/
+                step_count = 0;                             /* 清零步数计数器 */
+                /* 关闭通道*/
                 HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-                g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+                g_motion_sta = 0;                           /* 电机为停止状态  */
 							 // receive_flag=0;
 							 // printf_flag=1;
 							  step_count=0;
               //  HAL_TIM_Base_Stop_IT(&TIM5_Handler);
                // time_out=0;							
                 break;
-            case ACCEL:     //��һ�μ��ٽ׶�                      
+            case ACCEL:     //第一次加速阶段                      
                 step_count++;                               					 
-								if(0<step_count & step_count<=g_srd.step_accel2) 	                     //���е�һ�μ���
+								if(0<step_count & step_count<=g_srd.step_accel2) 	                     //运行第一段加速
 								{
 									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay;
-									 if(g_srd.step_delay<step_max)  //��������ٶ�����
+									 if(g_srd.step_delay<step_max)  //设置最大速度限制
 										{
 											g_srd.step_delay=step_max;
 										}
 								}
-								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)     //���еڶ��μ���
+								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)     //运行第二段加速
                 {
 									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay;
 									if(g_srd.step_delay<step_max)
@@ -938,144 +935,144 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 											g_srd.step_delay=step_max;
 										}
                 }
-								else if(g_srd.step_run<step_count)                                      /* ����Ƿ�����Ҫ���ٵĲ��� */
+								else if(g_srd.step_run<step_count)                                      /* 检查是否到了需要匀速的步数 */
                 {
-                    g_srd.run_state = RUN;                                              /* ����Ϊ��������״̬ */	
+                    g_srd.run_state = RUN;                                              /* 设置为匀速运行状态 */	
                 }
                 break;
             case RUN:
                 step_count++;  
-						    g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
-               if( g_srd.step_run<step_count & step_count<=g_srd.step_decel1)            //��������
+						    g_srd.step_decel1=step_all-300;  //设置300的减速步数过孔
+               if( g_srd.step_run<step_count & step_count<=g_srd.step_decel1)            //匀速运行
 								{
 									g_srd.step_delay =g_srd.step_delay ;
-									//��¼��һ�����е�����ٶ�
+									//记录第一段运行的最大速度
 									step_max_1=g_srd.step_delay;
 								}
-								else if( g_srd.step_decel1<step_count)                                   /* ��Ҫ��ʼ���� */
+								else if( g_srd.step_decel1<step_count)                                   /* 需要开始减速 */
                 {
-                    g_srd.run_state = DECEL;                                             /* ״̬�ı�Ϊ���� */
+                    g_srd.run_state = DECEL;                                             /* 状态改变为减速 */
                 }   
                 break; 
-						case DECEL:    //��һ�μ���
+						case DECEL:    //第一次减速
                 step_count++;
-						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
-							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+						   g_srd.step_decel1=step_all-300;  //设置300的减速步数过孔
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* 需要开始减速 */
 								{
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
-									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 if( g_srd.step_delay>step_pass)  //限制低速过孔的速度
 									 {
 										 g_srd.step_delay =step_pass;   
 									 }
 								}												
-                /* ����Ƿ�Ϊ���һ�� */
-								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                /* 检查是否为最后一步 */
+								else if(step_count >step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                   g_srd.run_state = ACCEL2;								
 									step_count=0;	                 								  
                 }
                 break;									
 						case ACCEL2:
-                step_count++;                               /* ������1*/						 
-								 if(0<step_count & step_count<=100) //��֤�ȶ�����
+                step_count++;                               /* 步数加1*/						 
+								 if(0<step_count & step_count<=100) //保证稳定过孔
 						     {
 									 g_srd.step_delay = g_srd.step_delay;
 								 }
 						    else if(100<step_count & step_count<=g_srd.step_run) 	
 								{
-									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //���ټ���
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //快速加速
 //									if(g_srd.step_delay<step_max)
 //										{
 //											g_srd.step_delay=step_max;
 //										}									
-									if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+									if(g_srd.step_delay<step_max_1)  //最大速度与第一段保持一致
 										{
 											g_srd.step_delay=step_max_1;
 									  }
 								}								
-								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+								else if(g_srd.step_run<step_count)         /* 检查是否到了需要匀速的步数 */
                 {
-                  g_srd.run_state = RUN2;                  /* ����Ϊ��������״̬ */
+                  g_srd.run_state = RUN2;                  /* 设置为匀速运行状态 */
                 }
 						
                 break;								
 					 case RUN2:
                 step_count++;                                          
-               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //�ܲ���-����������-����ٲ���
+               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //总步数-进孔脉冲数-快减速步数
 								{
 									g_srd.step_delay =g_srd.step_delay ;
 								}
-								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* ��Ҫ��ʼ���� */
+								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* 需要开始减速 */
                 {
-                   g_srd.run_state = DECEL2;                /* ״̬�ı�Ϊ���� */
+                   g_srd.run_state = DECEL2;                /* 状态改变为减速 */
                 }   
                 break; 
 					case DECEL2:
                 step_count++;
-						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
-							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+						   g_srd.step_decel1=step_all-300;  //设置300的减速步数过孔
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* 需要开始减速 */
 								{
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
-									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 if( g_srd.step_delay>step_pass)  //限制低速过孔的速度
 									 {
 										 g_srd.step_delay =step_pass;   
 									 }
 								}												
-                /* ����Ƿ�Ϊ���һ�� */
-								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                /* 检查是否为最后一步 */
+								else if(step_count >step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                   g_srd.run_state = ACCEL3;								
 									step_count=0;	                 								  
                 }
                 break;		
-					case ACCEL3:	 //�����μ���
-						 step_count++;                               /* ������1*/						 
-								 if(0<step_count & step_count<=100) //��֤�ȶ�����
+					case ACCEL3:	 //第三段加速
+						 step_count++;                               /* 步数加1*/						 
+								 if(0<step_count & step_count<=100) //保证稳定过孔
 						     {
 									 g_srd.step_delay = g_srd.step_delay;
 								 }
 						    else if(100<step_count & step_count<=g_srd.step_run) 	
 								{
-									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //���ټ���
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //快速加速
 //									if(g_srd.step_delay<step_max)
 //										{
 //											g_srd.step_delay=step_max;
 //										}									
-									if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+									if(g_srd.step_delay<step_max_1)  //最大速度与第一段保持一致
 										{
 											g_srd.step_delay=step_max_1;
 									  }
 								}								
-								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+								else if(g_srd.step_run<step_count)         /* 检查是否到了需要匀速的步数 */
                 {
-                  g_srd.run_state = RUN4;                  /* ����Ϊ��������״̬ */
+                  g_srd.run_state = RUN4;                  /* 设置为匀速运行状态 */
                 }
 						
                 break;
 						case RUN3:
                 step_count++;                                          
-               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //�ܲ���-����������-����ٲ���
+               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //总步数-进孔脉冲数-快减速步数
 								{
 									g_srd.step_delay =g_srd.step_delay ;
 								}
-								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* ��Ҫ��ʼ���� */
+								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* 需要开始减速 */
                 {
-                   g_srd.run_state = DECEL3;                /* ״̬�ı�Ϊ���� */
+                   g_srd.run_state = DECEL3;                /* 状态改变为减速 */
                 }   
                 break; 
 					case DECEL3:
                 step_count++;
-						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
-							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+						   g_srd.step_decel1=step_all-300;  //设置300的减速步数过孔
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* 需要开始减速 */
 								{
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
-									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 if( g_srd.step_delay>step_pass)  //限制低速过孔的速度
 									 {
 										 g_srd.step_delay =step_pass;   
 									 }
 								}												
-                /* ����Ƿ�Ϊ���һ�� */
-								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                /* 检查是否为最后一步 */
+								else if(step_count >step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                   g_srd.run_state = RUN4;								
 									step_count=0;	                 								  
@@ -1083,51 +1080,51 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
                 break;									
 					case RUN4:
                step_count++;
-					    if(step_all-pulse_compensate<step_count&step_count<step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+					    if(step_all-pulse_compensate<step_count&step_count<step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                     g_srd.step_delay=speed_rcc;
                 }
-							else if(step_count >=step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+							else if(step_count >=step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
 									  g_srd.run_state = STOP;
                 }
 							break;		
             }
-						 i = 0;                                          /* ���㶨ʱ���жϴ�������ֵ */
+						 i = 0;                                          /* 清零定时器中断次数计数值 */
         }
 			}
-			else if(level_speed==9)     //���Ŀף��м���ٹ��ף�������������36000���壬�����������
+			else if(level_speed==9)     //跨四孔，中间低速过孔，不补偿，运行36000脉冲，最后匀速运行
 			{
 					 tim_count = __HAL_TIM_GET_COUNTER(&g_timx_pwm_chy_handle);
 			  tmp = tim_count + g_srd.step_delay/2;             
        __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY,tmp);
-        i++;                                                /* ��ʱ���жϴ�������ֵ */
-        if(i == 2)                                          /* 2�Σ�˵���Ѿ����һ���������� */
+        i++;                                                /* 定时器中断次数计数值 */
+        if(i == 2)                                          /* 2次，说明已经输出一个完整脉冲 */
         { 				
-					  switch(g_srd.run_state)                         /* �Ӽ������߽׶� */
+					  switch(g_srd.run_state)                         /* 加减速曲线阶段 */
             {
 							case STOP:
-                step_count = 0;                             /* ���㲽�������� */
-                /* �ر�ͨ��*/
+                step_count = 0;                             /* 清零步数计数器 */
+                /* 关闭通道*/
                 HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-                g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+                g_motion_sta = 0;                           /* 电机为停止状态  */
 							//  receive_flag=0;
 							//  printf_flag=1;
 							  step_count=0;
                // HAL_TIM_Base_Stop_IT(&TIM5_Handler);
               //  time_out=0;							
                 break;
-            case ACCEL:     //��һ�μ��ٽ׶�                      
+            case ACCEL:     //第一次加速阶段                      
                 step_count++;                               					 
-								if(0<step_count & step_count<=g_srd.step_accel2) 	                     //���е�һ�μ���
+								if(0<step_count & step_count<=g_srd.step_accel2) 	                     //运行第一段加速
 								{
 									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay;
-									 if(g_srd.step_delay<step_max)  //��������ٶ�����
+									 if(g_srd.step_delay<step_max)  //设置最大速度限制
 										{
 											g_srd.step_delay=step_max;
 										}
 								}
-								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)     //���еڶ��μ���
+								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)     //运行第二段加速
                 {
 									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay;
 									if(g_srd.step_delay<step_max)
@@ -1135,197 +1132,197 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 											g_srd.step_delay=step_max;
 										}
                 }
-								else if(g_srd.step_run<step_count)                                      /* ����Ƿ�����Ҫ���ٵĲ��� */
+								else if(g_srd.step_run<step_count)                                      /* 检查是否到了需要匀速的步数 */
                 {
-                    g_srd.run_state = RUN;                                              /* ����Ϊ��������״̬ */	
+                    g_srd.run_state = RUN;                                              /* 设置为匀速运行状态 */	
                 }
                 break;
             case RUN:
                 step_count++;  
-						    g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
-               if( g_srd.step_run<step_count & step_count<=g_srd.step_decel1)            //��������
+						    g_srd.step_decel1=step_all-300;  //设置300的减速步数过孔
+               if( g_srd.step_run<step_count & step_count<=g_srd.step_decel1)            //匀速运行
 								{
 									g_srd.step_delay =g_srd.step_delay ;
-									//��¼��һ�����е�����ٶ�
+									//记录第一段运行的最大速度
 									step_max_1=g_srd.step_delay;
 								}
-								else if( g_srd.step_decel1<step_count)                                   /* ��Ҫ��ʼ���� */
+								else if( g_srd.step_decel1<step_count)                                   /* 需要开始减速 */
                 {
-                    g_srd.run_state = DECEL;                                             /* ״̬�ı�Ϊ���� */
+                    g_srd.run_state = DECEL;                                             /* 状态改变为减速 */
                 }   
                 break; 
 						case DECEL:
                 step_count++;
-						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
-							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+						   g_srd.step_decel1=step_all-300;  //设置300的减速步数过孔
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* 需要开始减速 */
 								{
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
-									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 if( g_srd.step_delay>step_pass)  //限制低速过孔的速度
 									 {
 										 g_srd.step_delay =step_pass;   
 									 }
 								}												
-                /* ����Ƿ�Ϊ���һ�� */
-								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                /* 检查是否为最后一步 */
+								else if(step_count >step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                   g_srd.run_state = ACCEL2;								
 									step_count=0;	                 								  
                 }
                 break;									
 						case ACCEL2:
-                step_count++;                               /* ������1*/						 
-								 if(0<step_count & step_count<=100) //��֤�ȶ�����
+                step_count++;                               /* 步数加1*/						 
+								 if(0<step_count & step_count<=100) //保证稳定过孔
 						     {
 									 g_srd.step_delay = g_srd.step_delay;
 								 }
 						    else if(100<step_count & step_count<=g_srd.step_run) 	
 								{
-									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //���ټ���
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //快速加速
 //									if(g_srd.step_delay<step_max)
 //										{
 //											g_srd.step_delay=step_max;
 //										}									
-									if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+									if(g_srd.step_delay<step_max_1)  //最大速度与第一段保持一致
 										{
 											g_srd.step_delay=step_max_1;
 									  }
 								}								
-								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+								else if(g_srd.step_run<step_count)         /* 检查是否到了需要匀速的步数 */
                 {
-                  g_srd.run_state = RUN2;                  /* ����Ϊ��������״̬ */
+                  g_srd.run_state = RUN2;                  /* 设置为匀速运行状态 */
                 }
 						
                 break;								
 					 case RUN2:
                 step_count++;                                          
-               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //�ܲ���-����������-����ٲ���
+               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //总步数-进孔脉冲数-快减速步数
 								{
 									g_srd.step_delay =g_srd.step_delay ;
 								}
-								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* ��Ҫ��ʼ���� */
+								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* 需要开始减速 */
                 {
-                   g_srd.run_state = DECEL2;                /* ״̬�ı�Ϊ���� */
+                   g_srd.run_state = DECEL2;                /* 状态改变为减速 */
                 }   
                 break; 
 					case DECEL2:
                step_count++;
-						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
-							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+						   g_srd.step_decel1=step_all-300;  //设置300的减速步数过孔
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* 需要开始减速 */
 								{
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
-									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 if( g_srd.step_delay>step_pass)  //限制低速过孔的速度
 									 {
 										 g_srd.step_delay =step_pass;   
 									 }
 								}												
-                /* ����Ƿ�Ϊ���һ�� */
-								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                /* 检查是否为最后一步 */
+								else if(step_count >step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                   g_srd.run_state = ACCEL3;								
 									step_count=0;	                 								  
                 }
                 break;		
-					case ACCEL3:	 //�����μ���
-						 step_count++;                               /* ������1*/						 
-								 if(0<step_count & step_count<=100) //��֤�ȶ�����
+					case ACCEL3:	 //第三段加速
+						 step_count++;                               /* 步数加1*/						 
+								 if(0<step_count & step_count<=100) //保证稳定过孔
 						     {
 									 g_srd.step_delay = g_srd.step_delay;
 								 }
 						    else if(100<step_count & step_count<=g_srd.step_run) 	
 								{
-									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //���ټ���
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //快速加速
 //									if(g_srd.step_delay<step_max)
 //										{
 //											g_srd.step_delay=step_max;
 //										}									
-									if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+									if(g_srd.step_delay<step_max_1)  //最大速度与第一段保持一致
 										{
 											g_srd.step_delay=step_max_1;
 									  }
 								}								
-								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+								else if(g_srd.step_run<step_count)         /* 检查是否到了需要匀速的步数 */
                 {
-                  g_srd.run_state = RUN3;                  /* ����Ϊ��������״̬ */
+                  g_srd.run_state = RUN3;                  /* 设置为匀速运行状态 */
                 }
 						
                 break;
 						case RUN3:
                 step_count++;                                          
-               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //�ܲ���-����������-����ٲ���
+               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //总步数-进孔脉冲数-快减速步数
 								{
 									g_srd.step_delay =g_srd.step_delay ;
 								}
-								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* ��Ҫ��ʼ���� */
+								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* 需要开始减速 */
                 {
-                   g_srd.run_state = DECEL3;                /* ״̬�ı�Ϊ���� */
+                   g_srd.run_state = DECEL3;                /* 状态改变为减速 */
                 }   
                 break; 
 						case DECEL3:
                 step_count++;
-						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
-							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+						   g_srd.step_decel1=step_all-300;  //设置300的减速步数过孔
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* 需要开始减速 */
 								{
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
-									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 if( g_srd.step_delay>step_pass)  //限制低速过孔的速度
 									 {
 										 g_srd.step_delay =step_pass;   
 									 }
 								}												
-                /* ����Ƿ�Ϊ���һ�� */
-								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                /* 检查是否为最后一步 */
+								else if(step_count >step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                   g_srd.run_state = ACCEL4;								
 									step_count=0;	                 								  
                 }
                 break;	
 					case ACCEL4:
-						 step_count++;                               /* ������1*/						 
-								 if(0<step_count & step_count<=100) //��֤�ȶ�����
+						 step_count++;                               /* 步数加1*/						 
+								 if(0<step_count & step_count<=100) //保证稳定过孔
 						     {
 									 g_srd.step_delay = g_srd.step_delay;
 								 }
 						    else if(100<step_count & step_count<=g_srd.step_run) 	
 								{
-									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //���ټ���
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //快速加速
 //									if(g_srd.step_delay<step_max)
 //										{
 //											g_srd.step_delay=step_max;
 //										}									
-									if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+									if(g_srd.step_delay<step_max_1)  //最大速度与第一段保持一致
 										{
 											g_srd.step_delay=step_max_1;
 									  }
 								}								
-								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+								else if(g_srd.step_run<step_count)         /* 检查是否到了需要匀速的步数 */
                 {
-                  g_srd.run_state = RUN5;                  /* ����Ϊ��������״̬ */
+                  g_srd.run_state = RUN5;                  /* 设置为匀速运行状态 */
                 }
 						
                 break;
 					case RUN4:
                 step_count++;                                          
-               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //�ܲ���-����������-����ٲ���
+               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //总步数-进孔脉冲数-快减速步数
 								{
 									g_srd.step_delay =g_srd.step_delay ;
 								}
-								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* ��Ҫ��ʼ���� */
+								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* 需要开始减速 */
                 {
-                   g_srd.run_state = DECEL4;                /* ״̬�ı�Ϊ���� */
+                   g_srd.run_state = DECEL4;                /* 状态改变为减速 */
                 }   
                 break; 			
 					case DECEL4:
                 step_count++;
-						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
-							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+						   g_srd.step_decel1=step_all-300;  //设置300的减速步数过孔
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* 需要开始减速 */
 								{
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
-									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 if( g_srd.step_delay>step_pass)  //限制低速过孔的速度
 									 {
 										 g_srd.step_delay =step_pass;   
 									 }
 								}												
-                /* ����Ƿ�Ϊ���һ�� */
-								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                /* 检查是否为最后一步 */
+								else if(step_count >step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                   g_srd.run_state = RUN5;								
 									step_count=0;	                 								  
@@ -1333,51 +1330,51 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
                 break;									
 					case RUN5:
                step_count++;
-					    if(step_all-pulse_compensate<step_count&step_count<step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+					    if(step_all-pulse_compensate<step_count&step_count<step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                     g_srd.step_delay=speed_rcc;
                 }
-							else if(step_count >=step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+							else if(step_count >=step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
 									  g_srd.run_state = STOP;
                 }
 							break;		
             }
-						 i = 0;                                          /* ���㶨ʱ���жϴ�������ֵ */
+						 i = 0;                                          /* 清零定时器中断次数计数值 */
         }
 			}
-			else if(level_speed==10)     //�����ף��м���ٹ��ף�����������36000���壬�����������
+			else if(level_speed==10)     //跨三孔，中间低速过孔，补偿，运行36000脉冲，最后匀速运行
 			{
 				 tim_count = __HAL_TIM_GET_COUNTER(&g_timx_pwm_chy_handle);
 			  tmp = tim_count + g_srd.step_delay/2;             
        __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY,tmp);
-        i++;                                                /* ��ʱ���жϴ�������ֵ */
-        if(i == 2)                                          /* 2�Σ�˵���Ѿ����һ���������� */
+        i++;                                                /* 定时器中断次数计数值 */
+        if(i == 2)                                          /* 2次，说明已经输出一个完整脉冲 */
         { 				
-					  switch(g_srd.run_state)                         /* �Ӽ������߽׶� */
+					  switch(g_srd.run_state)                         /* 加减速曲线阶段 */
             {
 							case STOP:
-                step_count = 0;                             /* ���㲽�������� */
-                /* �ر�ͨ��*/
+                step_count = 0;                             /* 清零步数计数器 */
+                /* 关闭通道*/
                 HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-                g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+                g_motion_sta = 0;                           /* 电机为停止状态  */
 							//  receive_flag=0;
 							 // printf_flag=1;
 							  step_count=0;
                // HAL_TIM_Base_Stop_IT(&TIM5_Handler);
                // time_out=0;							
                 break;
-            case ACCEL:     //��һ�μ��ٽ׶�                      
+            case ACCEL:     //第一次加速阶段                      
                 step_count++;                               					 
-								if(0<step_count & step_count<=g_srd.step_accel2) 	                     //���е�һ�μ���
+								if(0<step_count & step_count<=g_srd.step_accel2) 	                     //运行第一段加速
 								{
 									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay;
-									 if(g_srd.step_delay<step_max)  //��������ٶ�����
+									 if(g_srd.step_delay<step_max)  //设置最大速度限制
 										{
 											g_srd.step_delay=step_max;
 										}
 								}
-								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)     //���еڶ��μ���
+								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)     //运行第二段加速
                 {
 									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay;
 									if(g_srd.step_delay<step_max)
@@ -1385,144 +1382,144 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 											g_srd.step_delay=step_max;
 										}
                 }
-								else if(g_srd.step_run<step_count)                                      /* ����Ƿ�����Ҫ���ٵĲ��� */
+								else if(g_srd.step_run<step_count)                                      /* 检查是否到了需要匀速的步数 */
                 {
-                    g_srd.run_state = RUN;                                              /* ����Ϊ��������״̬ */	
+                    g_srd.run_state = RUN;                                              /* 设置为匀速运行状态 */	
                 }
                 break;
             case RUN:
                 step_count++;  
-						    g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
-               if( g_srd.step_run<step_count & step_count<=g_srd.step_decel1)            //��������
+						    g_srd.step_decel1=step_all-300;  //设置300的减速步数过孔
+               if( g_srd.step_run<step_count & step_count<=g_srd.step_decel1)            //匀速运行
 								{
 									g_srd.step_delay =g_srd.step_delay ;
-									//��¼��һ�����е�����ٶ�
+									//记录第一段运行的最大速度
 									step_max_1=g_srd.step_delay;
 								}
-								else if( g_srd.step_decel1<step_count)                                   /* ��Ҫ��ʼ���� */
+								else if( g_srd.step_decel1<step_count)                                   /* 需要开始减速 */
                 {
-                    g_srd.run_state = DECEL;                                             /* ״̬�ı�Ϊ���� */
+                    g_srd.run_state = DECEL;                                             /* 状态改变为减速 */
                 }   
                 break; 
-						case DECEL:    //��һ�μ���
+						case DECEL:    //第一次减速
                 step_count++;
-						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
-							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+						   g_srd.step_decel1=step_all-300;  //设置300的减速步数过孔
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* 需要开始减速 */
 								{
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
-									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 if( g_srd.step_delay>step_pass)  //限制低速过孔的速度
 									 {
 										 g_srd.step_delay =step_pass;   
 									 }
 								}												
-                /* ����Ƿ�Ϊ���һ�� */
-								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                /* 检查是否为最后一步 */
+								else if(step_count >step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                   g_srd.run_state = ACCEL2;								
 									step_count=0;	                 								  
                 }
                 break;									
 						case ACCEL2:
-                step_count++;                               /* ������1*/						 
-								 if(0<step_count & step_count<=100) //��֤�ȶ�����
+                step_count++;                               /* 步数加1*/						 
+								 if(0<step_count & step_count<=100) //保证稳定过孔
 						     {
 									 g_srd.step_delay = g_srd.step_delay;
 								 }
 						    else if(100<step_count & step_count<=g_srd.step_run) 	
 								{
-									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //���ټ���
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //快速加速
 //									if(g_srd.step_delay<step_max)
 //										{
 //											g_srd.step_delay=step_max;
 //										}									
-									if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+									if(g_srd.step_delay<step_max_1)  //最大速度与第一段保持一致
 										{
 											g_srd.step_delay=step_max_1;
 									  }
 								}								
-								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+								else if(g_srd.step_run<step_count)         /* 检查是否到了需要匀速的步数 */
                 {
-                  g_srd.run_state = RUN2;                  /* ����Ϊ��������״̬ */
+                  g_srd.run_state = RUN2;                  /* 设置为匀速运行状态 */
                 }
 						
                 break;								
 					 case RUN2:
                 step_count++;                                          
-               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //�ܲ���-����������-����ٲ���
+               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //总步数-进孔脉冲数-快减速步数
 								{
 									g_srd.step_delay =g_srd.step_delay ;
 								}
-								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* ��Ҫ��ʼ���� */
+								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* 需要开始减速 */
                 {
-                   g_srd.run_state = DECEL2;                /* ״̬�ı�Ϊ���� */
+                   g_srd.run_state = DECEL2;                /* 状态改变为减速 */
                 }   
                 break; 
 					case DECEL2:
                 step_count++;
-						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
-							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+						   g_srd.step_decel1=step_all-300;  //设置300的减速步数过孔
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* 需要开始减速 */
 								{
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
-									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 if( g_srd.step_delay>step_pass)  //限制低速过孔的速度
 									 {
 										 g_srd.step_delay =step_pass;   
 									 }
 								}												
-                /* ����Ƿ�Ϊ���һ�� */
-								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                /* 检查是否为最后一步 */
+								else if(step_count >step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                   g_srd.run_state = ACCEL3;								
 									step_count=0;	                 								  
                 }
                 break;		
-					case ACCEL3:	 //�����μ���
-						 step_count++;                               /* ������1*/						 
-								 if(0<step_count & step_count<=100) //��֤�ȶ�����
+					case ACCEL3:	 //第三段加速
+						 step_count++;                               /* 步数加1*/						 
+								 if(0<step_count & step_count<=100) //保证稳定过孔
 						     {
 									 g_srd.step_delay = g_srd.step_delay;
 								 }
 						    else if(100<step_count & step_count<=g_srd.step_run) 	
 								{
-									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //���ټ���
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //快速加速
 //									if(g_srd.step_delay<step_max)
 //										{
 //											g_srd.step_delay=step_max;
 //										}									
-									if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+									if(g_srd.step_delay<step_max_1)  //最大速度与第一段保持一致
 										{
 											g_srd.step_delay=step_max_1;
 									  }
 								}								
-								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+								else if(g_srd.step_run<step_count)         /* 检查是否到了需要匀速的步数 */
                 {
-                  g_srd.run_state = RUN3;                  /* ����Ϊ��������״̬ */
+                  g_srd.run_state = RUN3;                  /* 设置为匀速运行状态 */
                 }
 						
                 break;
 						case RUN3:
                 step_count++;                                          
-               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //�ܲ���-����������-����ٲ���
+               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //总步数-进孔脉冲数-快减速步数
 								{
 									g_srd.step_delay =g_srd.step_delay ;
 								}
-								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* ��Ҫ��ʼ���� */
+								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* 需要开始减速 */
                 {
-                   g_srd.run_state = DECEL3;                /* ״̬�ı�Ϊ���� */
+                   g_srd.run_state = DECEL3;                /* 状态改变为减速 */
                 }   
                 break; 
 					case DECEL3:
                 step_count++;
-						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
-							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+						   g_srd.step_decel1=step_all-300;  //设置300的减速步数过孔
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* 需要开始减速 */
 								{
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
-									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 if( g_srd.step_delay>step_pass)  //限制低速过孔的速度
 									 {
 										 g_srd.step_delay =step_pass;   
 									 }
 								}												
-                /* ����Ƿ�Ϊ���һ�� */
-								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                /* 检查是否为最后一步 */
+								else if(step_count >step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                   g_srd.run_state = ACCEL4;								
 									step_count=0;	                 								  
@@ -1561,41 +1558,41 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 								}					      
 						    break;		
             }
-						 i = 0;                                          /* ���㶨ʱ���жϴ�������ֵ */
+						 i = 0;                                          /* 清零定时器中断次数计数值 */
         }
 			}
-			else if(level_speed==11)     //���Ŀף��м���ٹ��ף�����������36000���壬�����������
+			else if(level_speed==11)     //跨四孔，中间低速过孔，补偿，运行36000脉冲，最后匀速运行
 			{
 					 tim_count = __HAL_TIM_GET_COUNTER(&g_timx_pwm_chy_handle);
 			  tmp = tim_count + g_srd.step_delay/2;             
        __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY,tmp);
-        i++;                                                /* ��ʱ���жϴ�������ֵ */
-        if(i == 2)                                          /* 2�Σ�˵���Ѿ����һ���������� */
+        i++;                                                /* 定时器中断次数计数值 */
+        if(i == 2)                                          /* 2次，说明已经输出一个完整脉冲 */
         { 				
-					  switch(g_srd.run_state)                         /* �Ӽ������߽׶� */
+					  switch(g_srd.run_state)                         /* 加减速曲线阶段 */
             {
 							case STOP:
-                step_count = 0;                             /* ���㲽�������� */
-                /* �ر�ͨ��*/
+                step_count = 0;                             /* 清零步数计数器 */
+                /* 关闭通道*/
                 HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-                g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+                g_motion_sta = 0;                           /* 电机为停止状态  */
 							 // receive_flag=0;
 							 // printf_flag=1;
 							  step_count=0;
                // HAL_TIM_Base_Stop_IT(&TIM5_Handler);
                // time_out=0;							
                 break;
-            case ACCEL:     //��һ�μ��ٽ׶�                      
+            case ACCEL:     //第一次加速阶段                      
                 step_count++;                               					 
-								if(0<step_count & step_count<=g_srd.step_accel2) 	                     //���е�һ�μ���
+								if(0<step_count & step_count<=g_srd.step_accel2) 	                     //运行第一段加速
 								{
 									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay;
-									 if(g_srd.step_delay<step_max)  //��������ٶ�����
+									 if(g_srd.step_delay<step_max)  //设置最大速度限制
 										{
 											g_srd.step_delay=step_max;
 										}
 								}
-								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)     //���еڶ��μ���
+								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)     //运行第二段加速
                 {
 									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay;
 									if(g_srd.step_delay<step_max)
@@ -1603,196 +1600,196 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 											g_srd.step_delay=step_max;
 										}
                 }
-								else if(g_srd.step_run<step_count)                                      /* ����Ƿ�����Ҫ���ٵĲ��� */
+								else if(g_srd.step_run<step_count)                                      /* 检查是否到了需要匀速的步数 */
                 {
-                    g_srd.run_state = RUN;                                              /* ����Ϊ��������״̬ */	
+                    g_srd.run_state = RUN;                                              /* 设置为匀速运行状态 */	
                 }
                 break;
             case RUN:
                 step_count++;  
-						    g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
-               if( g_srd.step_run<step_count & step_count<=g_srd.step_decel1)            //��������
+						    g_srd.step_decel1=step_all-300;  //设置300的减速步数过孔
+               if( g_srd.step_run<step_count & step_count<=g_srd.step_decel1)            //匀速运行
 								{
 									g_srd.step_delay =g_srd.step_delay ;
-									//��¼��һ�����е�����ٶ�
+									//记录第一段运行的最大速度
 									step_max_1=g_srd.step_delay;
 								}
-								else if( g_srd.step_decel1<step_count)                                   /* ��Ҫ��ʼ���� */
+								else if( g_srd.step_decel1<step_count)                                   /* 需要开始减速 */
                 {
-                    g_srd.run_state = DECEL;                                             /* ״̬�ı�Ϊ���� */
+                    g_srd.run_state = DECEL;                                             /* 状态改变为减速 */
                 }   
                 break; 
 						case DECEL:
                 step_count++;
-						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
-							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+						   g_srd.step_decel1=step_all-300;  //设置300的减速步数过孔
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* 需要开始减速 */
 								{
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
-									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 if( g_srd.step_delay>step_pass)  //限制低速过孔的速度
 									 {
 										 g_srd.step_delay =step_pass;   
 									 }
 								}												
-                /* ����Ƿ�Ϊ���һ�� */
-								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                /* 检查是否为最后一步 */
+								else if(step_count >step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                   g_srd.run_state = ACCEL2;								
 									step_count=0;	                 								  
                 }
                 break;									
 						case ACCEL2:
-                step_count++;                               /* ������1*/						 
-								 if(0<step_count & step_count<=100) //��֤�ȶ�����
+                step_count++;                               /* 步数加1*/						 
+								 if(0<step_count & step_count<=100) //保证稳定过孔
 						     {
 									 g_srd.step_delay = g_srd.step_delay;
 								 }
 						    else if(100<step_count & step_count<=g_srd.step_run) 	
 								{
-									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //���ټ���
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //快速加速
 //									if(g_srd.step_delay<step_max)
 //										{
 //											g_srd.step_delay=step_max;
 //										}									
-									if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+									if(g_srd.step_delay<step_max_1)  //最大速度与第一段保持一致
 										{
 											g_srd.step_delay=step_max_1;
 									  }
 								}								
-								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+								else if(g_srd.step_run<step_count)         /* 检查是否到了需要匀速的步数 */
                 {
-                  g_srd.run_state = RUN2;                  /* ����Ϊ��������״̬ */
+                  g_srd.run_state = RUN2;                  /* 设置为匀速运行状态 */
                 }
 						
                 break;								
 					 case RUN2:
                 step_count++;                                          
-               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //�ܲ���-����������-����ٲ���
+               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //总步数-进孔脉冲数-快减速步数
 								{
 									g_srd.step_delay =g_srd.step_delay ;
 								}
-								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* ��Ҫ��ʼ���� */
+								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* 需要开始减速 */
                 {
-                   g_srd.run_state = DECEL2;                /* ״̬�ı�Ϊ���� */
+                   g_srd.run_state = DECEL2;                /* 状态改变为减速 */
                 }   
                 break; 
 					case DECEL2:
                step_count++;
-						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
-							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+						   g_srd.step_decel1=step_all-300;  //设置300的减速步数过孔
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* 需要开始减速 */
 								{
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
-									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 if( g_srd.step_delay>step_pass)  //限制低速过孔的速度
 									 {
 										 g_srd.step_delay =step_pass;   
 									 }
 								}												
-                /* ����Ƿ�Ϊ���һ�� */
-								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                /* 检查是否为最后一步 */
+								else if(step_count >step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                   g_srd.run_state = ACCEL3;								
 									step_count=0;	                 								  
                 }
                 break;		
-					case ACCEL3:	 //�����μ���
-						 step_count++;                               /* ������1*/						 
-								 if(0<step_count & step_count<=100) //��֤�ȶ�����
+					case ACCEL3:	 //第三段加速
+						 step_count++;                               /* 步数加1*/						 
+								 if(0<step_count & step_count<=100) //保证稳定过孔
 						     {
 									 g_srd.step_delay = g_srd.step_delay;
 								 }
 						    else if(100<step_count & step_count<=g_srd.step_run) 	
 								{
-									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //���ټ���
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //快速加速
 //									if(g_srd.step_delay<step_max)
 //										{
 //											g_srd.step_delay=step_max;
 //										}									
-									if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+									if(g_srd.step_delay<step_max_1)  //最大速度与第一段保持一致
 										{
 											g_srd.step_delay=step_max_1;
 									  }
 								}								
-								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+								else if(g_srd.step_run<step_count)         /* 检查是否到了需要匀速的步数 */
                 {
-                  g_srd.run_state = RUN3;                  /* ����Ϊ��������״̬ */
+                  g_srd.run_state = RUN3;                  /* 设置为匀速运行状态 */
                 }
 						
                 break;
 						case RUN3:
                 step_count++;                                          
-               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //�ܲ���-����������-����ٲ���
+               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //总步数-进孔脉冲数-快减速步数
 								{
 									g_srd.step_delay =g_srd.step_delay ;
 								}
-								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* ��Ҫ��ʼ���� */
+								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* 需要开始减速 */
                 {
-                   g_srd.run_state = DECEL3;                /* ״̬�ı�Ϊ���� */
+                   g_srd.run_state = DECEL3;                /* 状态改变为减速 */
                 }   
                 break; 
 						case DECEL3:
                 step_count++;
-						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
-							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+						   g_srd.step_decel1=step_all-300;  //设置300的减速步数过孔
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* 需要开始减速 */
 								{
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
-									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 if( g_srd.step_delay>step_pass)  //限制低速过孔的速度
 									 {
 										 g_srd.step_delay =step_pass;   
 									 }
 								}												
-                /* ����Ƿ�Ϊ���һ�� */
-								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                /* 检查是否为最后一步 */
+								else if(step_count >step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                   g_srd.run_state = ACCEL4;								
 									step_count=0;	                 								  
                 }
                 break;	
 					case ACCEL4:
-						 step_count++;                               /* ������1*/						 
-								 if(0<step_count & step_count<=100) //��֤�ȶ�����
+						 step_count++;                               /* 步数加1*/						 
+								 if(0<step_count & step_count<=100) //保证稳定过孔
 						     {
 									 g_srd.step_delay = g_srd.step_delay;
 								 }
 						    else if(100<step_count & step_count<=g_srd.step_run) 	
 								{
-									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //���ټ���
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //快速加速
 //									if(g_srd.step_delay<step_max)
 //										{
 //											g_srd.step_delay=step_max;
 //										}									
-									if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+									if(g_srd.step_delay<step_max_1)  //最大速度与第一段保持一致
 										{
 											g_srd.step_delay=step_max_1;
 									  }
 								}								
-								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+								else if(g_srd.step_run<step_count)         /* 检查是否到了需要匀速的步数 */
                 {
-                  g_srd.run_state = RUN4;                  /* ����Ϊ��������״̬ */
+                  g_srd.run_state = RUN4;                  /* 设置为匀速运行状态 */
                 }
 						
                 break;
 					case RUN4:
                 step_count++;                                          
-               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //�ܲ���-����������-����ٲ���
+               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //总步数-进孔脉冲数-快减速步数
 								{
 									g_srd.step_delay =g_srd.step_delay ;
 								}
-								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* ��Ҫ��ʼ���� */
+								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* 需要开始减速 */
                 {
-                   g_srd.run_state = DECEL4;                /* ״̬�ı�Ϊ���� */
+                   g_srd.run_state = DECEL4;                /* 状态改变为减速 */
                 }   
                 break; 			
 					case DECEL4:
                 step_count++;                                         
-							if( g_srd.step_decel1<step_count & step_count<=step_all-1)         //ֱ�ӿ����
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)         //直接快减速
 								{
 									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
-									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 if( g_srd.step_delay>step_pass)  //限制低速过孔的速度
 									 {
 										  g_srd.step_delay =step_pass;   
 									 }
 								}												
-                /* ����Ƿ�Ϊ���һ�� */
-								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                /* 检查是否为最后一步 */
+								else if(step_count >step_all-1)                  /* 判断减速步数是否从负值加到0是的话 减速完成 */
                 {	
                     g_srd.run_state = ACCEL5;
 									  step_count=0;									  
@@ -1830,24 +1827,24 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 								}					      
 						    break;	
             }
-						 i = 0;                                          /* ���㶨ʱ���жϴ�������ֵ */
+						 i = 0;                                          /* 清零定时器中断次数计数值 */
         }
 			}
-         __HAL_TIM_CLEAR_IT(&g_timx_pwm_chy_handle, TIM_IT_UPDATE);      /* �����ʱ������жϱ�־λ */
+         __HAL_TIM_CLEAR_IT(&g_timx_pwm_chy_handle, TIM_IT_UPDATE);      /* 清除定时器溢出中断标志位 */
 		}
 	}
 
- //****************************************��С�׼��������
+ //****************************************大小孔检测回零程序
 extern u8 zero_flag;
 extern u8 zero_run;
 u32 time_pass=0;
 extern int time_out;
-extern TIM_HandleTypeDef TIM5_Handler;      //��ʱ����� 2
+extern TIM_HandleTypeDef TIM5_Handler;      //定时器句柄 2
 extern u8 constant;
 extern int level_speed;	
 extern int pulse_cut;
 		
- u8 CheckRtrig(uint16_t GPIO_Pin)  //�����ؼ��
+ u8 CheckRtrig(uint16_t GPIO_Pin)  //上升沿检测
 	{
     static u32 Rtrig = 0;	
     if(HAL_GPIO_ReadPin(ST1_ZERO_GPIO_PORT,GPIO_Pin ) == 0)
@@ -1875,7 +1872,7 @@ extern int pulse_cut;
 					return 0;
 			}
 		}
- u8 CheckPtrig(uint16_t GPIO_Pin)  //�½��ؼ��
+ u8 CheckPtrig(uint16_t GPIO_Pin)  //下降沿检测
 	{
     static u32 Rtrig = 0;	
     if(HAL_GPIO_ReadPin(ST1_ZERO_GPIO_PORT,GPIO_Pin ) == 1)
@@ -1907,35 +1904,34 @@ extern int pulse_cut;
 	
 extern u8 run_flag;
 		
-extern __IO uint32_t g_set_speed ;          /* ����ٶ� ��λΪ0.1rad/sec */
-extern __IO uint32_t g_step_accel;            /* ���ٶ� ��λΪ0.1rad/sec^2    100*/
-extern __IO uint32_t g_step_decel;            /* ���ٶ� ��λΪ0.1rad/sec^2 */
-extern __IO uint16_t g_step_angle;             /* ���õĲ���*/
-extern  __IO uint16_t g_step1;             /* ���õĲ���1*/
-extern __IO uint16_t g_step2;             /* ���õĲ���2*/		
+extern __IO uint32_t g_set_speed ;          /* 最大速度 单位为0.1rad/sec */
+extern __IO uint32_t g_step_accel;            /* 加速度 单位为0.1rad/sec^2    100*/
+extern __IO uint32_t g_step_decel;            /* 减速度 单位为0.1rad/sec^2 */
+extern __IO uint16_t g_step_angle;             /* 设置的步数*/
+extern  __IO uint16_t g_step1;             /* 设置的步数1*/
+extern __IO uint16_t g_step2;             /* 设置的步数2*/		
 
 extern u8 time_delay_pass;	
 extern int pulse_compensate;	
 extern int time_delay_compensate;	
 extern  uint8_t g_zero_flag;
 extern  uint8_t reset_flag;	
-extern u8 receive_flag;    //���Խ���ͨѶ ���н�����־
+extern u8 receive_flag;    //可以接收通讯 运行结束标志
 extern u8 printf_flag; 
 
 		
 extern int32_t cycles_72;		
 	
-//ע��level=1��������8000�����壬������
-//    level=6����8000���壬����������
-//		level=7�����׶�����
-//    level=2����16000�� ����������
-//    level=5�����׶��������������Ӽ��ٺ�����ٶ�
-//    level=3����8000+����������
-//    level=4����16000+����������		
+//注：level=1，正常走8000个脉冲，不补偿
+//    level=6，走8000脉冲，最后进孔匀速
+//		level=7，进孔段脉冲
+//    level=2，走16000， 最后进孔匀速
+//    level=5，进孔段脉冲数，包含加减速和最高速度
+//    level=3，走8000+进孔脉冲数
+//    level=4，走16000+进孔脉冲数		
 void step_motor_motion_compensate(int num,int dir)   
 {		
-  int i=0;	
-	if (dir==1)  //��������
+	if (dir==1)  //反向运行
 	{
 	   if(num==1)
 		 {
@@ -1945,23 +1941,23 @@ void step_motor_motion_compensate(int num,int dir)
 				{
 					if(g_motion_sta==0)
 					{
-						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 					//	printf("time_out: %d\r\n",time_out);
 						time_out=0;
 						printf_flag=1;
 						receive_flag=0;
-						//����ת������¼���洢����
+						//将旋转次数记录并存储下来
 						 cycles_72=cycles_72+1;											
 						break;
 					}
-					if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+					if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4)==1)  //硬件24V接收IO，由光耦转换模块将24V转换成3.3V输入到单片机IO中
 					{
-				// printf("E4\r\n");   //��ͣ
+				// printf("E4\r\n");   //急停
 						HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 						time_out=0;
-						g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
-						step_count = 0;                             /* ���㲽�������� */
+						g_motion_sta = 0;                           /* 电机为停止状态  */
+						step_count = 0;                             /* 清零步数计数器 */
 						receive_flag=0;
 						g_zero_flag=0;
 						printf_flag=0;
@@ -1982,14 +1978,14 @@ void step_motor_motion_compensate(int num,int dir)
 								cycles_72=cycles_72+1;	
 									break;
 								}
-								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4)==1)  //硬件24V接收IO，由光耦转换模块将24V转换成3.3V输入到单片机IO中
 								{
-								  //printf("E4\r\n");   //��ͣ
+								  //printf("E4\r\n");   //急停
 									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 									time_out=0;
-									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
-									step_count = 0;                             /* ���㲽�������� */
+									g_motion_sta = 0;                           /* 电机为停止状态  */
+									step_count = 0;                             /* 清零步数计数器 */
 									receive_flag=0;
 									g_zero_flag=0;
 									printf_flag=0;
@@ -2004,7 +2000,7 @@ void step_motor_motion_compensate(int num,int dir)
 				{
 					if(g_motion_sta==0)
 					{
-						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 					//	printf("time_out: %d\r\n",time_out);
 						time_out=0;
 						printf_flag=1;
@@ -2012,14 +2008,14 @@ void step_motor_motion_compensate(int num,int dir)
 						cycles_72=cycles_72+1;	
 						break;
 					}
-					if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+					if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4)==1)  //硬件24V接收IO，由光耦转换模块将24V转换成3.3V输入到单片机IO中
 					{
-				// printf("E4\r\n");   //��ͣ
+				// printf("E4\r\n");   //急停
 						HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 						time_out=0;
-						g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
-						step_count = 0;                             /* ���㲽�������� */
+						g_motion_sta = 0;                           /* 电机为停止状态  */
+						step_count = 0;                             /* 清零步数计数器 */
 						receive_flag=0;
 						g_zero_flag=0;
 						printf_flag=0;
@@ -2040,14 +2036,14 @@ void step_motor_motion_compensate(int num,int dir)
 										cycles_72=cycles_72+1;	
 									break;
 								}
-								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4)==1)  //硬件24V接收IO，由光耦转换模块将24V转换成3.3V输入到单片机IO中
 								{
-								// printf("E4\r\n");   //��ͣ
+								// printf("E4\r\n");   //急停
 									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 									time_out=0;
-									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
-									step_count = 0;                             /* ���㲽�������� */
+									g_motion_sta = 0;                           /* 电机为停止状态  */
+									step_count = 0;                             /* 清零步数计数器 */
 									receive_flag=0;
 									g_zero_flag=0;
 									printf_flag=0;
@@ -2065,14 +2061,14 @@ void step_motor_motion_compensate(int num,int dir)
 										cycles_72=cycles_72+1;	
 									break;
 								}
-								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4)==1)  //硬件24V接收IO，由光耦转换模块将24V转换成3.3V输入到单片机IO中
 								{
-								 //printf("E4\r\n");   //��ͣ
+								 //printf("E4\r\n");   //急停
 									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 									time_out=0;
-									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
-									step_count = 0;                             /* ���㲽�������� */
+									g_motion_sta = 0;                           /* 电机为停止状态  */
+									step_count = 0;                             /* 清零步数计数器 */
 									receive_flag=0;
 									g_zero_flag=0;
 									printf_flag=0;
@@ -2087,7 +2083,7 @@ void step_motor_motion_compensate(int num,int dir)
 				{
 					if(g_motion_sta==0)
 					{
-						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 					//	printf("time_out: %d\r\n",time_out);
 						time_out=0;
 						printf_flag=1;
@@ -2095,14 +2091,14 @@ void step_motor_motion_compensate(int num,int dir)
 						cycles_72=cycles_72+1;	
 						break;
 					}
-					if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+					if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4)==1)  //硬件24V接收IO，由光耦转换模块将24V转换成3.3V输入到单片机IO中
 					{
-				// printf("E4\r\n");   //��ͣ
+				// printf("E4\r\n");   //急停
 						HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 						time_out=0;
-						g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
-						step_count = 0;                             /* ���㲽�������� */
+						g_motion_sta = 0;                           /* 电机为停止状态  */
+						step_count = 0;                             /* 清零步数计数器 */
 						receive_flag=0;
 						g_zero_flag=0;
 						printf_flag=0;
@@ -2123,14 +2119,14 @@ void step_motor_motion_compensate(int num,int dir)
 										cycles_72=cycles_72+1;	
 									break;
 								}
-								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4)==1)  //硬件24V接收IO，由光耦转换模块将24V转换成3.3V输入到单片机IO中
 								{
-								// printf("E4\r\n");   //��ͣ
+								// printf("E4\r\n");   //急停
 									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 									time_out=0;
-									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
-									step_count = 0;                             /* ���㲽�������� */
+									g_motion_sta = 0;                           /* 电机为停止状态  */
+									step_count = 0;                             /* 清零步数计数器 */
 									receive_flag=0;
 									g_zero_flag=0;
 									printf_flag=0;
@@ -2147,14 +2143,14 @@ void step_motor_motion_compensate(int num,int dir)
 										cycles_72=cycles_72+1;	
 									break;
 								}
-								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4)==1)  //硬件24V接收IO，由光耦转换模块将24V转换成3.3V输入到单片机IO中
 								{
-								// printf("E4\r\n");   //��ͣ
+								// printf("E4\r\n");   //急停
 									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 									time_out=0;
-									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
-									step_count = 0;                             /* ���㲽�������� */
+									g_motion_sta = 0;                           /* 电机为停止状态  */
+									step_count = 0;                             /* 清零步数计数器 */
 									receive_flag=0;
 									g_zero_flag=0;
 									printf_flag=0;
@@ -2171,14 +2167,14 @@ void step_motor_motion_compensate(int num,int dir)
 										cycles_72=cycles_72+1;	
 									break;
 								}
-								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4)==1)  //硬件24V接收IO，由光耦转换模块将24V转换成3.3V输入到单片机IO中
 								{
-								// printf("E4\r\n");   //��ͣ
+								// printf("E4\r\n");   //急停
 									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 									time_out=0;
-									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
-									step_count = 0;                             /* ���㲽�������� */
+									g_motion_sta = 0;                           /* 电机为停止状态  */
+									step_count = 0;                             /* 清零步数计数器 */
 									receive_flag=0;
 									g_zero_flag=0;
 									printf_flag=0;
@@ -2192,7 +2188,7 @@ void step_motor_motion_compensate(int num,int dir)
 				      {
 								if(g_motion_sta==0)
 								{
-									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 								//	printf("time_out: %d\r\n",time_out);
 									time_out=0;
 									printf_flag=1;
@@ -2200,14 +2196,14 @@ void step_motor_motion_compensate(int num,int dir)
 										cycles_72=cycles_72+1;	
 									break;
 								}
-								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4)==1)  //硬件24V接收IO，由光耦转换模块将24V转换成3.3V输入到单片机IO中
 								{
-							// printf("E4\r\n");   //��ͣ
+							// printf("E4\r\n");   //急停
 									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 									time_out=0;
-									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
-									step_count = 0;                             /* ���㲽�������� */
+									g_motion_sta = 0;                           /* 电机为停止状态  */
+									step_count = 0;                             /* 清零步数计数器 */
 									receive_flag=0;
 									g_zero_flag=0;
 									printf_flag=0;
@@ -2218,7 +2214,7 @@ void step_motor_motion_compensate(int num,int dir)
 		  run_flag=0;
 			
 	}
-	else if(dir==0)  //��������
+	else if(dir==0)  //反向运行
 	{		
 			run_flag=0;
 	}	
@@ -2227,8 +2223,7 @@ void step_motor_motion_compensate(int num,int dir)
 
 void step_motor_motion(int num,int dir)  
 {			
-	int i=0;		
-	if (dir==1)  //��������
+	if (dir==1)  //反向运行
 	{	
 		  if(num==1)
 		 {
@@ -2238,7 +2233,7 @@ void step_motor_motion(int num,int dir)
 				{
 					if(g_motion_sta==0)
 					{
-						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 				//		printf("time_out: %d\r\n",time_out);
 						time_out=0;
 						printf_flag=1;
@@ -2246,14 +2241,14 @@ void step_motor_motion(int num,int dir)
 							cycles_72=cycles_72+1;	
 						break;
 					}
-					if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+					if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4)==1)  //硬件24V接收IO，由光耦转换模块将24V转换成3.3V输入到单片机IO中
 					{
-				// printf("E4\r\n");   //��ͣ
+				// printf("E4\r\n");   //急停
 						HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 						time_out=0;
-						g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
-						step_count = 0;                             /* ���㲽�������� */
+						g_motion_sta = 0;                           /* 电机为停止状态  */
+						step_count = 0;                             /* 清零步数计数器 */
 						receive_flag=0;
 						g_zero_flag=0;
 						printf_flag=0;
@@ -2269,7 +2264,7 @@ void step_motor_motion(int num,int dir)
 				{
 					if(g_motion_sta==0)
 					{
-						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 				//		printf("time_out: %d\r\n",time_out);
 						time_out=0;
 						printf_flag=1;
@@ -2277,14 +2272,14 @@ void step_motor_motion(int num,int dir)
 							cycles_72=cycles_72+2;	
 						break;
 					}
-					if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+					if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4)==1)  //硬件24V接收IO，由光耦转换模块将24V转换成3.3V输入到单片机IO中
 					{
-				// printf("E4\r\n");   //��ͣ
+				// printf("E4\r\n");   //急停
 						HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 						time_out=0;
-						g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
-						step_count = 0;                             /* ���㲽�������� */
+						g_motion_sta = 0;                           /* 电机为停止状态  */
+						step_count = 0;                             /* 清零步数计数器 */
 						receive_flag=0;
 						g_zero_flag=0;
 						printf_flag=0;
@@ -2304,7 +2299,7 @@ void step_motor_motion(int num,int dir)
 //		}
 		  run_flag=0;
 	}
-	else if(dir==0)  //��������
+	else if(dir==0)  //正向运行
 	{
 		if(num==1)
 		 {
@@ -2314,7 +2309,7 @@ void step_motor_motion(int num,int dir)
 				{
 					if(g_motion_sta==0)
 					{
-						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 				//		printf("time_out: %d\r\n",time_out);
 						time_out=0;
 						printf_flag=1;
@@ -2322,14 +2317,14 @@ void step_motor_motion(int num,int dir)
 							cycles_72=cycles_72+1;	
 						break;
 					}
-					if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+					if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4)==1)  //硬件24V接收IO，由光耦转换模块将24V转换成3.3V输入到单片机IO中
 					{
-				// printf("E4\r\n");   //��ͣ
+				// printf("E4\r\n");   //急停
 						HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 						time_out=0;
-						g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
-						step_count = 0;                             /* ���㲽�������� */
+						g_motion_sta = 0;                           /* 电机为停止状态  */
+						step_count = 0;                             /* 清零步数计数器 */
 						receive_flag=0;
 						g_zero_flag=0;
 						printf_flag=0;
@@ -2350,14 +2345,14 @@ void step_motor_motion(int num,int dir)
 										cycles_72=cycles_72+1;	
 									break;
 								}
-								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4)==1)  //硬件24V接收IO，由光耦转换模块将24V转换成3.3V输入到单片机IO中
 								{
-							// printf("E4\r\n");   //��ͣ
+							// printf("E4\r\n");   //急停
 									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 									time_out=0;
-									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
-									step_count = 0;                             /* ���㲽�������� */
+									g_motion_sta = 0;                           /* 电机为停止状态  */
+									step_count = 0;                             /* 清零步数计数器 */
 									receive_flag=0;
 									g_zero_flag=0;
 									printf_flag=0;
@@ -2371,7 +2366,7 @@ void step_motor_motion(int num,int dir)
 				{
 					if(g_motion_sta==0)
 					{
-						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 			//			printf("time_out: %d\r\n",time_out);
 						time_out=0;
 						printf_flag=1;
@@ -2379,14 +2374,14 @@ void step_motor_motion(int num,int dir)
 							cycles_72=cycles_72+1;	
 						break;
 					}
-					if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+					if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4)==1)  //硬件24V接收IO，由光耦转换模块将24V转换成3.3V输入到单片机IO中
 					{
-				// printf("E4\r\n");   //��ͣ
+				// printf("E4\r\n");   //急停
 						HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 						time_out=0;
-						g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
-						step_count = 0;                             /* ���㲽�������� */
+						g_motion_sta = 0;                           /* 电机为停止状态  */
+						step_count = 0;                             /* 清零步数计数器 */
 						receive_flag=0;
 						g_zero_flag=0;
 						printf_flag=0;
@@ -2407,14 +2402,14 @@ void step_motor_motion(int num,int dir)
 										cycles_72=cycles_72+1;	
 									break;
 								}
-								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4)==1)  //硬件24V接收IO，由光耦转换模块将24V转换成3.3V输入到单片机IO中
 								{
-								// printf("E4\r\n");   //��ͣ
+								// printf("E4\r\n");   //急停
 									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 									time_out=0;
-									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
-									step_count = 0;                             /* ���㲽�������� */
+									g_motion_sta = 0;                           /* 电机为停止状态  */
+									step_count = 0;                             /* 清零步数计数器 */
 									receive_flag=0;
 									g_zero_flag=0;
 									printf_flag=0;
@@ -2431,14 +2426,14 @@ void step_motor_motion(int num,int dir)
 										cycles_72=cycles_72+1;	
 									break;
 								}
-								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4)==1)  //硬件24V接收IO，由光耦转换模块将24V转换成3.3V输入到单片机IO中
 								{
-								// printf("E4\r\n");   //��ͣ
+								// printf("E4\r\n");   //急停
 									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 									time_out=0;
-									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
-									step_count = 0;                             /* ���㲽�������� */
+									g_motion_sta = 0;                           /* 电机为停止状态  */
+									step_count = 0;                             /* 清零步数计数器 */
 									receive_flag=0;
 									g_zero_flag=0;
 									printf_flag=0;
@@ -2452,7 +2447,7 @@ void step_motor_motion(int num,int dir)
 							{
 								if(g_motion_sta==0)
 								{
-									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 							//		printf("time_out: %d\r\n",time_out);
 									time_out=0;
 									printf_flag=1;
@@ -2460,14 +2455,14 @@ void step_motor_motion(int num,int dir)
 										cycles_72=cycles_72+1;	
 									break;
 								}
-								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4)==1)  //硬件24V接收IO，由光耦转换模块将24V转换成3.3V输入到单片机IO中
 								{
-							// printf("E4\r\n");   //��ͣ
+							// printf("E4\r\n");   //急停
 									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 									time_out=0;
-									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
-									step_count = 0;                             /* ���㲽�������� */
+									g_motion_sta = 0;                           /* 电机为停止状态  */
+									step_count = 0;                             /* 清零步数计数器 */
 									receive_flag=0;
 									g_zero_flag=0;
 									printf_flag=0;
@@ -2488,14 +2483,14 @@ void step_motor_motion(int num,int dir)
 										cycles_72=cycles_72+1;	
 									break;
 								}
-								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4)==1)  //硬件24V接收IO，由光耦转换模块将24V转换成3.3V输入到单片机IO中
 								{
-								// printf("E4\r\n");   //��ͣ
+								// printf("E4\r\n");   //急停
 									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 									time_out=0;
-									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
-									step_count = 0;                             /* ���㲽�������� */
+									g_motion_sta = 0;                           /* 电机为停止状态  */
+									step_count = 0;                             /* 清零步数计数器 */
 									receive_flag=0;
 									g_zero_flag=0;
 									printf_flag=0;
@@ -2512,14 +2507,14 @@ void step_motor_motion(int num,int dir)
 										cycles_72=cycles_72+1;	
 									break;
 								}
-								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4)==1)  //硬件24V接收IO，由光耦转换模块将24V转换成3.3V输入到单片机IO中
 								{
-								// printf("E4\r\n");   //��ͣ
+								// printf("E4\r\n");   //急停
 									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 									time_out=0;
-									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
-									step_count = 0;                             /* ���㲽�������� */
+									g_motion_sta = 0;                           /* 电机为停止状态  */
+									step_count = 0;                             /* 清零步数计数器 */
 									receive_flag=0;
 									g_zero_flag=0;
 									printf_flag=0;
@@ -2537,14 +2532,14 @@ void step_motor_motion(int num,int dir)
 										cycles_72=cycles_72+1;	
 									break;
 								}
-								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4)==1)  //硬件24V接收IO，由光耦转换模块将24V转换成3.3V输入到单片机IO中
 								{
-								// printf("E4\r\n");   //��ͣ
+								// printf("E4\r\n");   //急停
 									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 									time_out=0;
-									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
-									step_count = 0;                             /* ���㲽�������� */
+									g_motion_sta = 0;                           /* 电机为停止状态  */
+									step_count = 0;                             /* 清零步数计数器 */
 									receive_flag=0;
 									g_zero_flag=0;
 									printf_flag=0;
@@ -2559,7 +2554,7 @@ void step_motor_motion(int num,int dir)
 				{
 					if(g_motion_sta==0)
 					{
-						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 					//	printf("time_out: %d\r\n",time_out);
 						time_out=0;
 						printf_flag=1;
@@ -2567,14 +2562,14 @@ void step_motor_motion(int num,int dir)
 							cycles_72=cycles_72+1;	
 						break;
 					}
-					if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+					if(HAL_GPIO_ReadPin(GPIOE,GPIO_PIN_4)==1)  //硬件24V接收IO，由光耦转换模块将24V转换成3.3V输入到单片机IO中
 					{
-				// printf("E4\r\n");   //��ͣ
+				// printf("E4\r\n");   //急停
 						HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
-						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //停止运行计时
 						time_out=0;
-						g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
-						step_count = 0;                             /* ���㲽�������� */
+						g_motion_sta = 0;                           /* 电机为停止状态  */
+						step_count = 0;                             /* 清零步数计数器 */
 						receive_flag=0;
 						g_zero_flag=0;
 						printf_flag=0;
@@ -2589,22 +2584,22 @@ void step_motor_motion(int num,int dir)
 
 extern u8 run_flag;
 extern int station_x;
-void step_motor_L1(int station_y,int station_z)    //���·������
+void step_motor_L1(int station_y,int station_z)    //最短路径运行
 {
 	switch (station_y)
 	{
-		/**************************����1�Ź�λ**************************/
-		case 1:   //����һ�Ź�λ										
+		/**************************运行1号工位**************************/
+		case 1:   //运行一号工位										
 				if(run_flag==0)
 					 {						 
 						 run_flag=1;
 							 switch (station_z)
 						 {
-							 case 5:   //��1 
+							 case 5:   //逆1 
 										step_motor_motion(1,1);		
 										break;							 
 							 case 1:
-										 //��ǰ��λ������
+										 //当前工位不运行
 									run_flag=0;
 							      receive_flag=0;
 							      printf_flag=1;
@@ -2612,33 +2607,33 @@ void step_motor_L1(int station_y,int station_z)    //���·������
                     HAL_TIM_Base_Stop_IT(&TIM5_Handler);
                     time_out=0;	
 										break;							 
-							 case 2:   //˳ 1													
+							 case 2:   //顺 1													
 							     step_motor_motion(1,0);
 										break;							 
-							 case 3:  //˳ 2									
+							 case 3:  //顺 2									
 							     step_motor_motion(2,0);
 										break;							 
-							 case 4:   //��ʱ����ת������λ
+							 case 4:   //逆时针旋转二个工位
 										step_motor_motion(2,1);
 							 break; 
 							}					
 						}
 					 station_x=1;
 					 break;
-	/**************************����2�Ź�λ**************************/					
-			case 2:   //����2�Ź�λ					
+	/**************************运行2号工位**************************/					
+			case 2:   //运行2号工位					
 				if(run_flag==0)
 					 {						 
 						 run_flag=1;
 							 switch (station_z)
 						 {
-							 case 5:   //��ʱ����ת2
+							 case 5:   //逆时针旋转2
 										step_motor_motion(2,1);
 										break;							 
-							 case 1:  //��ʱ����ת1
+							 case 1:  //逆时针旋转1
 									  step_motor_motion(1,1);			
 										break;																	 
-							 case 2:   //������			
+							 case 2:   //不运行			
 										run_flag=0;
 							       receive_flag=0;
 							      printf_flag=1;
@@ -2646,33 +2641,33 @@ void step_motor_L1(int station_y,int station_z)    //���·������
                     HAL_TIM_Base_Stop_IT(&TIM5_Handler);
                     time_out=0;	
 										break;						 
-							 case 3:  //˳ 1
+							 case 3:  //顺 1
 							      step_motor_motion(1,0);
 										break;							 
-							 case 4:   //˳ 2
+							 case 4:   //顺 2
 							     step_motor_motion(2,0);
 							 break; 
 							}					
 						}
 					 station_x=2;
 					 break;
-	/**************************����3�Ź�λ**************************/	
-			case 3:   //���е�3�Ź�λ										
+	/**************************运行3号工位**************************/	
+			case 3:   //运行到3号工位										
 				if(run_flag==0)
 					 {						 
 						 run_flag=1;
 							 switch (station_z)
 						 {
-							 case 5:   //˳  2
+							 case 5:   //顺  2
 							      step_motor_motion(2,0);
 										break;							 
-							 case 1: //��  2
+							 case 1: //逆  2
 										step_motor_motion(2,1);
 										break;							 
-							 case 2:   //��1 			
+							 case 2:   //逆1 			
 										step_motor_motion(1,1);
 										break;							 
-							 case 3:  //��ǰ��λ������
+							 case 3:  //当前工位不运行
 										run_flag=0;
 							      receive_flag=0;
 							      printf_flag=1;
@@ -2680,33 +2675,33 @@ void step_motor_L1(int station_y,int station_z)    //���·������
                     HAL_TIM_Base_Stop_IT(&TIM5_Handler);
                     time_out=0;	
 										break;							 
-							 case 4:   //˳ʱ����ת1
+							 case 4:   //顺时针旋转1
 							      step_motor_motion(1,0);
 							 break; 
 							}					
 						}
 					 station_x=3;
 					 break;
-		/**************************����4�Ź�λ**************************/						
-			case 4:   //����4�Ź�λ										
+		/**************************运行4号工位**************************/						
+			case 4:   //运行4号工位										
 				if(run_flag==0)
 					 {						 
 						 run_flag=1;
 							 switch (station_z)
 						 {
-							 case 5:   //˳ 1
+							 case 5:   //顺 1
 							     step_motor_motion(1,0);
 										break;							 
-							 case 1://˳2
+							 case 1://顺2
 							     step_motor_motion(2,0);
 										break;							 
-							 case 2:   //�� 2				
+							 case 2:   //逆 2				
 										step_motor_motion(2,1);
 										break;							 
-							 case 3:  //�� 1
+							 case 3:  //逆 1
 										step_motor_motion(1,1);
 										break;							 
-							 case 4:   //������
+							 case 4:   //不运行
 										run_flag=0;
 							      receive_flag=0;
 							      printf_flag=1;
@@ -2718,14 +2713,14 @@ void step_motor_L1(int station_y,int station_z)    //���·������
 						}
 					 station_x=4;
 					 break;
-	/**************************����5�Ź�λ**************************/							
-			case 5:   //����5�Ź�λ										
+	/**************************运行5号工位**************************/							
+			case 5:   //运行5号工位										
 				if(run_flag==0)
 					 {						 
 						 run_flag=1;
 							 switch (station_z)
 						 {
-							 case 5:   //������
+							 case 5:   //不运行
 										run_flag=0;
 							      receive_flag=0;
 							      printf_flag=1;
@@ -2733,16 +2728,16 @@ void step_motor_L1(int station_y,int station_z)    //���·������
                     HAL_TIM_Base_Stop_IT(&TIM5_Handler);
                     time_out=0;	
 										break;							 
-							 case 1://˳1
+							 case 1://顺1
 							     step_motor_motion(1,0);
 										break;							 
-							 case 2:   //˳2				
+							 case 2:   //顺2				
 							     step_motor_motion(2,0);
 										break;							 
-							 case 3:  //�� 2 
+							 case 3:  //逆 2 
 										step_motor_motion(2,1);
 										break;							 
-							 case 4:   //�� 1
+							 case 4:   //逆 1
 										step_motor_motion(1,1);
 							 break; 
 							}					
@@ -2752,23 +2747,23 @@ void step_motor_L1(int station_y,int station_z)    //���·������
 		}
 }
  
-void step_motor_L2(int station_y,int station_z)   //������������    ����м�ͣ��100ms  ��˳����
+void step_motor_L2(int station_y,int station_z)   //补偿脉冲运行    跨孔中间停顿100ms  高顺低逆
 {
 	receive_flag=1;
 	switch (station_y)
 	{
-		/**************************����1�Ź�λ**************************/
-		case 1:   //����һ�Ź�λ										
+		/**************************运行1号工位**************************/
+		case 1:   //运行一号工位										
 				if(run_flag==0)
 					 {						 
 						 run_flag=1;
 							 switch (station_z)
 						 {
-							 case 5:   //˳ʱ����תһ����λ
+							 case 5:   //顺时针旋转一个工位
 										step_motor_motion(4,0);
 										break;							 
 							 case 1:
-										 //��ǰ��λ������
+										 //当前工位不运行
 									run_flag=0;
 							     receive_flag=0;
 							      printf_flag=1;
@@ -2776,37 +2771,37 @@ void step_motor_L2(int station_y,int station_z)   //����������
                     HAL_TIM_Base_Stop_IT(&TIM5_Handler);
                     time_out=0;	
 										break;							 
-							 case 2:   //˳ʱ����ת4				
+							 case 2:   //顺时针旋转4				
 										//step_motor_motion(1,1);
 							     step_motor_motion(1,0);
 										break;							 
-							 case 3:  //˳ 3 
+							 case 3:  //顺 3 
 										//step_motor_motion(2,1);
 							     step_motor_motion(2,0);
 										break;							 
-							 case 4:   //˳ʱ����ת������λ
+							 case 4:   //顺时针旋转二个工位
 										step_motor_motion(3,0);
 							 break; 
 							}					
 						}
 					 station_x=1;
 					 break;
-	/**************************����2�Ź�λ**************************/					
-			case 2:   //����2�Ź�λ	
-       // printf("����CASE2 \r\n");				
+	/**************************运行2号工位**************************/					
+			case 2:   //运行2号工位	
+       // printf("进入CASE2 \r\n");				
 				if(run_flag==0)
 					 {						 
 						 run_flag=1;
 							 switch (station_z)
 						 {
-							 case 5:   //˳3
+							 case 5:   //顺3
 										step_motor_motion(3,0);
 										break;							 
-							 case 1:  //��ʱ��1
-									//printf("����CASE 1 to 2 \r\n");				
+							 case 1:  //逆时针1
+									//printf("进入CASE 1 to 2 \r\n");				
 							      step_motor_motion_compensate(1,1);
 										break;																	 
-							 case 2:   //������			
+							 case 2:   //不运行			
 										run_flag=0;
 							      receive_flag=0;
 							      printf_flag=1;
@@ -2814,11 +2809,11 @@ void step_motor_L2(int station_y,int station_z)   //����������
                     HAL_TIM_Base_Stop_IT(&TIM5_Handler);
                     time_out=0;	
 										break;						 
-							 case 3:  //˳ 1
+							 case 3:  //顺 1
 										//step_motor_motion(1,1);
 							      step_motor_motion(1,0);
 										break;							 
-							 case 4:   //˳ 2
+							 case 4:   //顺 2
 										//step_motor_motion(2,1);
 							     step_motor_motion(2,0);
 							 break; 
@@ -2826,24 +2821,24 @@ void step_motor_L2(int station_y,int station_z)   //����������
 						}
 					  station_x=2;
 					 break;
-	/**************************����3�Ź�λ**************************/	
-			case 3:   //���е�3�Ź�λ										
+	/**************************运行3号工位**************************/	
+			case 3:   //运行到3号工位										
 				if(run_flag==0)
 					 {						 
 						 run_flag=1;
 							 switch (station_z)
 						 {
-							 case 5:   //˳ 2
+							 case 5:   //顺 2
 										//step_motor_motion(2,1);
 							      step_motor_motion(2,0);
 										break;							 
-							 case 1: //��  2
+							 case 1: //逆  2
 										step_motor_motion_compensate(2,1);
 										break;							 
-							 case 2:   //�� 1				
+							 case 2:   //逆 1				
 										step_motor_motion_compensate(1,1);
 										break;							 
-							 case 3:  //��ǰ��λ������
+							 case 3:  //当前工位不运行
 										run_flag=0;
 							      receive_flag=0;
 							      printf_flag=1;
@@ -2851,7 +2846,7 @@ void step_motor_L2(int station_y,int station_z)   //����������
                     HAL_TIM_Base_Stop_IT(&TIM5_Handler);
                     time_out=0;	
 										break;							 
-							 case 4:   //˳1 
+							 case 4:   //顺1 
 										//step_motor_motion(1,1);
 							      step_motor_motion(1,0);
 							 break; 
@@ -2859,28 +2854,28 @@ void step_motor_L2(int station_y,int station_z)   //����������
 						}
 					  station_x=3;
 					 break;
-		/**************************����4�Ź�λ**************************/						
-			case 4:   //����4�Ź�λ										
+		/**************************运行4号工位**************************/						
+			case 4:   //运行4号工位										
 				if(run_flag==0)
 					 {						 
 						 run_flag=1;
 							 switch (station_z)
 						 {
-							 case 5:   //˳1
+							 case 5:   //顺1
 										//step_motor_motion(1,1);
 							     step_motor_motion(1,0);
 										break;							 
-							 case 1://��ʱ����ת3
+							 case 1://逆时针旋转3
 										// step_motor_motion(2,1);
 							     step_motor_motion_compensate(3,1);
 										break;							 
-							 case 2:   //��2			
+							 case 2:   //逆2			
 										step_motor_motion_compensate(2,1);
 										break;							 
-							 case 3:  //��1
+							 case 3:  //逆1
 										step_motor_motion_compensate(1,1);
 										break;							 
-							 case 4:   //������
+							 case 4:   //不运行
 										run_flag=0;
 							       receive_flag=0;
 							      printf_flag=1;
@@ -2892,14 +2887,14 @@ void step_motor_L2(int station_y,int station_z)   //����������
 						}
 					  station_x=4;
 					 break;
-	/**************************����5�Ź�λ**************************/							
-			case 5:   //����5�Ź�λ										
+	/**************************运行5号工位**************************/							
+			case 5:   //运行5号工位										
 				if(run_flag==0)
 					 {						 
 						 run_flag=1;
 							 switch (station_z)
 						 {
-							 case 5:   //������
+							 case 5:   //不运行
 										run_flag=0;
 							      receive_flag=0;
 							      printf_flag=1;
@@ -2907,18 +2902,18 @@ void step_motor_L2(int station_y,int station_z)   //����������
                     HAL_TIM_Base_Stop_IT(&TIM5_Handler);
                     time_out=0;	
 										break;							 
-							 case 1://��ʱ��1
+							 case 1://逆时针1
 										//step_motor_motion(1,1);
 							     step_motor_motion_compensate(4,1);
 										break;							 
-							 case 2:   //��3				
+							 case 2:   //逆3				
 										//step_motor_motion(2,1);
 							    step_motor_motion_compensate(3,1);
 										break;							 
-							 case 3:  //��2
+							 case 3:  //逆2
 										step_motor_motion_compensate(2,1);
 										break;							 
-							 case 4:   //��1
+							 case 4:   //逆1
 										step_motor_motion_compensate(1,1);
 							 break; 
 							}					
@@ -2932,18 +2927,18 @@ void motor_run_all(int loop,int station_to)
 {
 	  int j4=0;	           
 		int  j5=1;						 
-		 for(j5=1;j5<=5;j5++)   //��λѭ��
+		 for(j5=1;j5<=5;j5++)   //工位循环
 		 {
 			 if(station_to==j5)
 			 {
-				 //����ڵ�ǰ��λ������ִ��
+				 //如果在当前工位，程序不执行
 			 }else
 			 {
-			   for ( j4=0; j4<=loop;j4++)  //��λ����
+			   for ( j4=0; j4<=loop;j4++)  //工位往返
 			   {							 
-				 //�Զ����Գ���
+				 //自动测试程序
 				   step_motor_L1(j5,station_to);  //
-				 //�ȴ����н���
+				 //等待运行接收
 					 while(1)
 					{
 						if(g_motion_sta==0)
@@ -2953,7 +2948,7 @@ void motor_run_all(int loop,int station_to)
 					}
 				 delay_ms(500);
 				 step_motor_L1(station_to,j5);
-				//�ȴ����н���
+				//等待运行接收
 					 while(1)
 					{
 						if(g_motion_sta==0)
@@ -2998,7 +2993,7 @@ int read_hal(void)
     }
 }
 
-/* 含RTC时间戳的运动完成打印 (替代原 printf_flag 分支中的简单打印) */
+/* 含RTC时间戳的运动完成打印 */
 void motion_done_with_ts(int st)
 {
     char ts[32];
