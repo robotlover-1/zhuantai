@@ -1,6 +1,5 @@
 #include "sys.h"
 #include "usart.h"
-#include "eth.h"
 #if SYSTEM_SUPPORT_OS
 #include "includes.h"
 #endif
@@ -33,12 +32,6 @@ int fputc(int ch, FILE *f)
         }
     }
     USART1->DR = (uint8_t)ch;
-
-    /* 如果当前命令来源是 TCP，同步发送到 TCP 客户端 */
-    if (g_cmd_src == CMD_SRC_TCP && g_tcp_client_connected)
-    {
-        eth_tcp_send_byte((uint8_t)ch);
-    }
     return ch;
 }
 #endif
