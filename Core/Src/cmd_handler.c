@@ -164,9 +164,9 @@ void cmd_set_loop2(u8 *buf, int len) {
 void cmd_zero(void) {
     if (reset_flag == 0) {
         if (receive_flag == 0) {
-            HAL_GPIO_WritePin(ST1_ZERO_GPIO_PORT, ST1_ZERO_GPIO_PIN, 1);
+            HAL_GPIO_WritePin(ST1_ZERO_GPIO_PORT, ST1_ZERO_GPIO_PIN, GPIO_PIN_SET);
             delay_ms(1000);
-            HAL_GPIO_WritePin(ST1_ZERO_GPIO_PORT, ST1_ZERO_GPIO_PIN, 0);
+            HAL_GPIO_WritePin(ST1_ZERO_GPIO_PORT, ST1_ZERO_GPIO_PIN, GPIO_PIN_RESET);
             while (1) {
                 if (HAL_GPIO_ReadPin(ST1_END_GPIO_PORT, ST1_END_GPIO_PIN) == 1) break;
             }
@@ -199,9 +199,9 @@ void cmd_ele_test(void) {
 
 void cmd_photo_test(void) {
     printf("拍照\r\n");
-    HAL_GPIO_WritePin(ST1_IO_GPIO_PORT, ST1_IO_GPIO_PIN, 1);
+    HAL_GPIO_WritePin(ST1_IO_GPIO_PORT, ST1_IO_GPIO_PIN, GPIO_PIN_SET);
     delay_ms(500);
-    HAL_GPIO_WritePin(ST1_IO_GPIO_PORT, ST1_IO_GPIO_PIN, 0);
+    HAL_GPIO_WritePin(ST1_IO_GPIO_PORT, ST1_IO_GPIO_PIN, GPIO_PIN_RESET);
 }
 
 void cmd_clc(void) {
@@ -246,9 +246,9 @@ void cmd_res(void) {
 }
 
 void cmd_io_test(void) {
-    HAL_GPIO_WritePin(ST1_IO_GPIO_PORT, ST1_IO_GPIO_PIN, 1);
+    HAL_GPIO_WritePin(ST1_IO_GPIO_PORT, ST1_IO_GPIO_PIN, GPIO_PIN_SET);
     delay_ms(500);
-    HAL_GPIO_WritePin(ST1_IO_GPIO_PORT, ST1_IO_GPIO_PIN, 0);
+    HAL_GPIO_WritePin(ST1_IO_GPIO_PORT, ST1_IO_GPIO_PIN, GPIO_PIN_RESET);
 }
 
 void cmd_hal_test(void) {
@@ -356,9 +356,9 @@ void cmd_goo_test(void) {
                 step_motor_L2(station_to, j5);
                 while (1) { if (g_motion_sta == 0) break; }
                 delay_ms(3000);
-                HAL_GPIO_WritePin(ST1_IO_GPIO_PORT, ST1_IO_GPIO_PIN, 1);
+                HAL_GPIO_WritePin(ST1_IO_GPIO_PORT, ST1_IO_GPIO_PIN, GPIO_PIN_SET);
                 delay_ms(10);
-                HAL_GPIO_WritePin(ST1_IO_GPIO_PORT, ST1_IO_GPIO_PIN, 0);
+                HAL_GPIO_WritePin(ST1_IO_GPIO_PORT, ST1_IO_GPIO_PIN, GPIO_PIN_RESET);
                 delay_ms(2000);
             }
         }
