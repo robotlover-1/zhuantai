@@ -194,4 +194,18 @@ void SysTick_Handler(void)
 /* please refer to the startup file (startup_stm32f4xx.s).                    */
 /******************************************************************************/
 /* USER CODE BEGIN 1 */
+
+/* 外部声明 (来自 atim.c) */
+extern TIM_HandleTypeDef g_timx_pwm_chy_handle;
+
+/**
+ * @brief TIM1_CC_IRQHandler - 步进电机 S 曲线脉冲中断
+ * @note  从 F1 的 HAL_TIM_OC_DelayElapsedCallback 移植,
+ *        使用 TIM1_CH1 OC TOGGLE 模式产生脉冲
+ */
+void TIM1_CC_IRQHandler(void)
+{
+    HAL_TIM_IRQHandler(&g_timx_pwm_chy_handle);
+}
+
 /* USER CODE END 1 */
