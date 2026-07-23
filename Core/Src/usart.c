@@ -1,4 +1,4 @@
-﻿#include "sys.h"
+#include "sys.h"
 #include "usart.h"
 #include "eth.h"
 #if SYSTEM_SUPPORT_OS
@@ -8,7 +8,7 @@
 #if 1
 #pragma import(__use_no_semihosting)
 /* __stdout is provided by the C library (stdio_streams.o);
- * we only override fputc() for UART5 output. */
+ * we only override fputc() for USART1 output. */
 
 /* ---- semihosting stubs (required by --no_semihosting) ---- */
 void _sys_exit(int x)       { x = x; }
@@ -25,14 +25,14 @@ long $Sub$$_sys_flen(int fh)      { (void)fh; return 0; }
 int fputc(int ch, FILE *f)
 {
     uint32_t timeout = 500000;
-    while (!(UART5->SR & USART_SR_TC))
+    while (!(USART1->SR & USART_SR_TC))
     {
         if (--timeout == 0)
         {
             break;
         }
     }
-    UART5->DR = (uint8_t)ch;
+    USART1->DR = (uint8_t)ch;
 
     /* 如果当前命令来源是 TCP，同步发送到 TCP 客户端 */
     if (g_cmd_src == CMD_SRC_TCP && g_tcp_client_connected)
@@ -56,45 +56,40 @@ void uart_init(u32 bound)
     u16 mantissa;
     u16 fraction;
 
-    /* 直接寄存器配置，绕过HAL */
-    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOCEN;     /* GPIOC时钟 */
-    RCC->AHB1ENR |= RCC_AHB1ENR_GPIODEN;     /* GPIOD时钟 */
-    RCC->APB1ENR |= RCC_APB1ENR_UART5EN;    /* UART5时钟 */
+    /* USART1: PA9(TX), PA10(RX), APB2=84MHz */
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+    RCC->APB2ENR |= RCC_APB2ENR_USART1EN;
 
-    /* PC12(TX) AF_PP AF8 */
-    GPIOC->MODER   &= ~(3 << 24);  GPIOC->MODER   |= (2 << 24);
-    GPIOC->OTYPER  &= ~(1 << 12);
-    GPIOC->OSPEEDR |=  (3 << 24);
-    GPIOC->PUPDR   &= ~(3 << 24);
-    GPIOC->AFR[1]  &= ~(0xF << 16); GPIOC->AFR[1] |= (8 << 16);
+    /* PA9(TX) AF_PP AF7 */
+    GPIOA->MODER   &= ~(3 << 18);  GPIOA->MODER   |= (2 << 18);
+    GPIOA->OTYPER  &= ~(1 << 9);
+    GPIOA->OSPEEDR |=  (3 << 18);
+    GPIOA->PUPDR   &= ~(3 << 18);  GPIOA->PUPDR   |= (1 << 18);
+    GPIOA->AFR[1]  &= ~(0xF << 4); GPIOA->AFR[1]  |= (7 << 4);
 
-    /* PD2(RX) AF_PP + PULLUP */
-    GPIOD->MODER   &= ~(3 << 4);   GPIOD->MODER   |= (2 << 4);
-    GPIOD->OTYPER  &= ~(1 << 2);
-    GPIOD->OSPEEDR |=  (3 << 4);
-    GPIOD->PUPDR   &= ~(3 << 4);  GPIOD->PUPDR   |= (1 << 4);
-    GPIOD->AFR[0]  &= ~(0xF << 8); GPIOD->AFR[0] |= (8 << 8);
+    /* PA10(RX) AF_PP + PULLUP */
+    GPIOA->MODER   &= ~(3 << 20);  GPIOA->MODER   |= (2 << 20);
+    GPIOA->OTYPER  &= ~(1 << 10);
+    GPIOA->OSPEEDR |=  (3 << 20);
+    GPIOA->PUPDR   &= ~(3 << 20);  GPIOA->PUPDR   |= (1 << 20);
+    GPIOA->AFR[1]  &= ~(0xF << 8); GPIOA->AFR[1]  |= (7 << 8);
 
-    /* 波特率 = 42MHz / (16 * bound) */
-    temp = 42000000 / (bound * 16);
+    /* 波特率 = APB2(84MHz) / (16 * bound) */
+    temp = 84000000 / (bound * 16);
     mantissa = (u16)(temp);
-    fraction = (u16)(42000000 % (bound * 16) * 16 / (bound * 16) + 0.5);
-    UART5->BRR = (mantissa << 4) | (fraction & 0xF);
+    fraction = (u16)(84000000 % (bound * 16) * 16 / (bound * 16) + 0.5);
+    USART1->BRR = (mantissa << 4) | (fraction & 0xF);
 
-    /* 先使能UART、TX、RX（暂不开RXNE中断，防止TX稳定前的噪声） */
-    UART5->CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
-    /* 发一个换行符稳定TX线（使TC标志可正常置位） */
-    UART5->DR = 0x0A;
-    while (!(UART5->SR & USART_SR_TC)) {}
-    /* 清除可能因TX稳定前的噪声产生的RXNE标志 */
-    if (UART5->SR & USART_SR_RXNE) (void)UART5->DR;
-    /* 再开RXNE中断 */
-    UART5->CR1 |= USART_CR1_RXNEIE;
-    HAL_NVIC_SetPriority(UART5_IRQn, 0, 0);
-    HAL_NVIC_EnableIRQ(UART5_IRQn);
+    USART1->CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
+    USART1->DR = 0x0A;
+    while (!(USART1->SR & USART_SR_TC)) {}
+    if (USART1->SR & USART_SR_RXNE) (void)USART1->DR;
+    USART1->CR1 |= USART_CR1_RXNEIE;
+    HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(USART1_IRQn);
 
-    /* 保存句柄供ISR使用 */
-    UART5_Handler.Instance = UART5;
+    /* 保存句柄供ISR使用（变量名保留兼容） */
+    UART5_Handler.Instance = USART1;
 }
 
 /* uart_init()使用直接寄存器配置，不调用HAL，故此MspInit无需实现 */
@@ -134,19 +129,19 @@ void send(uint16_t data)
 /* 调试计数器：每收到一个字节+1，主循环中打印 */
 volatile u32 rx_debug_cnt = 0;
 
-void UART5_IRQHandler(void)
+void USART1_IRQHandler(void)
 {
     u8 Res;
 #if SYSTEM_SUPPORT_OS
     OSIntEnter();
 #endif
-    if (UART5->SR & USART_SR_RXNE)
+    if (USART1->SR & USART_SR_RXNE)
     {
-        Res = (u8)(UART5->DR & 0x00FF);
-        
+        Res = (u8)(USART1->DR & 0x00FF);
+
         if ((USART_RX_STA & 0x8000) == 0)
         {
-            
+
             if (USART_RX_STA & 0x4000)
             {
                 if (Res != 0x0a)
@@ -169,8 +164,8 @@ void UART5_IRQHandler(void)
         }
     }
     /* 清除可能的错误标志（ORE/NE/FE），防止中断阻塞 */
-    if (UART5->SR & (USART_SR_ORE | USART_SR_FE | USART_SR_NE)) {
-        (void)UART5->DR;
+    if (USART1->SR & (USART_SR_ORE | USART_SR_FE | USART_SR_NE)) {
+        (void)USART1->DR;
     }
 #if SYSTEM_SUPPORT_OS
     OSIntExit();
