@@ -1,92 +1,46 @@
-﻿/**
- ****************************************************************************************************
- * @file        cmd_handler.h
- * @brief       串口命令处理函数声明
- ****************************************************************************************************
- */
 #ifndef __CMD_HANDLER_H
 #define __CMD_HANDLER_H
 
 #include "sys.h"
 
-/* 命令处理函数 - 参数设置类 */
-void cmd_set_time(u8 *buf, int len);     /* TIME: 设置RTC时间, 格式: TIME:2026-07-11 14:30:00 */
-void cmd_set_loop1(u8 *buf, int len);    /* T: 大循环次数设置 */
+/* 参数设置类 */
+void cmd_set_time(u8 *buf, int len);        /* TIME: 设置RTC时间 */
+void cmd_set_g_speed(u8 *buf, int len);     /* D: 最大速度 g_set_speed */
+void cmd_set_g_accel(u8 *buf, int len);     /* J: 第一段加速度 g_step_accel */
+void cmd_set_g_decel(u8 *buf, int len);     /* L:num 第一段减速度 g_step_decel */
+void cmd_set_g_step1(u8 *buf, int len);     /* M: 加速段步数 g_step1 */
+void cmd_set_g_step2(u8 *buf, int len);     /* N: 减速段步数 g_step2 */
+void cmd_set_step_pass(u8 *buf, int len);   /* X: 过孔速度 step_pass */
+void cmd_set_speed_rcc(u8 *buf, int len);   /* Z: 回零速度 speed_rcc */
+void cmd_set_pulse_cut(u8 *buf, int len);   /* P: 工位间脉冲数 pulse_cut */
+void cmd_set_pulse_comp(u8 *buf, int len);  /* C: 补偿脉冲数 pulse_compensate */
+void cmd_set_time_delay(u8 *buf, int len);  /* Q: 补偿延时 time_delay_compensate */
+void cmd_set_loop1(u8 *buf, int len);       /* T: 大循环次数 loop1 */
+void cmd_set_loop2(u8 *buf, int len);       /* H: 小循环次数 loop2 */
 
-void cmd_set_loop2(u8 *buf, int len);    /* H: 速度设置 */
+/* 控制类 */
+void cmd_zero(void);                        /* D0: 回零 */
+void cmd_set_station1(void);                /* D1: 设当前位置为工位1 */
+void cmd_ele_test(void);                    /* ELE: 光电信号检测 */
+void cmd_photo_test(void);                  /* OP: 拍照测试 */
+void cmd_clc(void);                         /* CLC: 清除报警 */
+void cmd_rtf(void);                         /* RTF: 正转一个工位 */
+void cmd_rtb(void);                         /* RTB: 反转一个工位 */
+void cmd_rts(void);                         /* RTS: 停止 */
+void cmd_res(void);                         /* RES: 软复位 */
+void cmd_io_test(void);                     /* IO: IO输出测试 */
+void cmd_hal_test(void);                    /* HAL: 霍尔传感器检测 (调试) */
+void cmd_goto_station(int station);         /* L1-L5: 跳转到指定工位 */
+void cmd_query_station(void);               /* L?: 查询当前工位 */
 
-void cmd_set_force(u8 *buf, int len);    /* F: 运行最大速度 */
+/* 测试模式 */
+void cmd_gnn_test(void);                    /* gnn: 疲劳测试 */
+void cmd_goo_test(void);                     /* goo: 自动测试 */
 
-void cmd_set_duty(u8 *buf, int len);     /* R: 最大占空比 */
-
-void cmd_set_speed(u8 *buf, int len);    /* V: 最后匀速进孔速度 */
-
-void cmd_set_pulse_low(u8 *buf, int len);/* S: 慢速进孔脉冲数 */
-
-void cmd_set_pulse_buf(u8 *buf, int len);/* BS: 缓冲段起始脉冲数 */
-void cmd_set_speed_buf(u8 *buf, int len);/* BV: 缓冲段速度 */
-
-void cmd_set_photo_pos(u8 *buf, int len);/* P: 拍照孔位 */
-
-void cmd_set_pluse_ele(u8 *buf, int len);/* E: 光电检测限制脉冲数 */
-
-void cmd_set_kp(u8 *buf, int len);       /* KP: 位置环P增益 (×1000) */
-void cmd_set_ki(u8 *buf, int len);       /* KI: 位置环I增益 (×1000) */
-void cmd_set_kd(u8 *buf, int len);       /* KD: 位置环D增益 (×1000) */
-void cmd_set_skp(u8 *buf, int len);      /* SK: 速度环P增益 (×1000) */
-void cmd_set_ski(u8 *buf, int len);      /* SI: 速度环I增益 (×1000) */
-void cmd_set_skd(u8 *buf, int len);      /* SD: 速度环D增益 (×1000) */
-void cmd_set_pc(u8 *buf, int len);       /* PC: PID采样周期(ms) */
-
-/* 命令处理函数 - 控制类 */
-void cmd_ele_test(void);                 /* ELE: 光电信号检测 */
-
-void cmd_photo_test(void);               /* OP:  拍照测试 */
-
-void cmd_clc(void);                      /* CLC: 报警清除 */
-
-void cmd_motor_init(void);               /* D0:  电机初始化 */
-
-void cmd_hal_test(void);                 /* HAL: 霍尔位置检测 */
-
-void cmd_red(void);                      /* RED: 读取当前位置 */
-
-void cmd_rtf(void);                      /* RTF: 正转 */
-
-void cmd_rtb(void);                      /* RTB: 反转 */
-
-void cmd_tim3(void);                     /* TIM3: TIM4计时测试 */
-
-void cmd_ring(void);                     /* RING: 上升沿检测 */
-
-void cmd_rts(void);                      /* RTS: 恢复初始位置 */
-
-void cmd_res(void);                      /* RES: 串口更新程序 */
-
-void cmd_alarm(void);                    /* ALARM: 查询报警代码 */
-
-void cmd_stat(void);                     /* STAT:  运动统计(欠冲/过冲/过孔位次数) */
-void cmd_stat_clear(void);               /* STATC: 清除运动统计 */
-
-void cmd_cycle(void);                    /* CYCLE: 查询总转动计数(只读, 不可清零) */
-
-/* 命令处理函数 - 工位跳转 */
-void cmd_goto_station(int station);      /* L1-L5: 跳转到指定工位 */
-
-/* 命令处理函数 - 测试模式 */
-void cmd_gnn_test(void);                 /* gnn: 磨合测试(5站循环) */
-
-void cmd_goo_test(void);                 /* goo: 自动测试 */
-
-void cmd_gff_test(void);                 /* gff: 正转拍照测试 */
-
-void cmd_gmm_test(void);                 /* gmm: 反转拍照测试 */
-
-void cmd_set_ip(u8 *buf, int len);        /* IP: 设置本机IP地址 */
-void cmd_set_mask(u8 *buf, int len);      /* MASK: 设置子网掩码 */
-void cmd_set_gw(u8 *buf, int len);        /* GW: 设置默认网关 */
-void cmd_set_port(u8 *buf, int len);      /* PORT: 设置TCP监听端口 */
+/* 查询类 (新增) */
+void cmd_cycle(void);                       /* CYCLE: 查询总转动孔位计数 */
+void cmd_show_params(void);                 /* PARA: 显示全部参数 */
 
 /* 命令分发 */
-int cmd_dispatch(u8 *buf, int len);      /* 串口命令分发入口 */
+int cmd_dispatch(u8 *buf, int len);
 #endif
