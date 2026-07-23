@@ -1,577 +1,2975 @@
-﻿#include "step_motor.h"
+#include "step_motor.h"
 #include "atim.h"
-#include "app_util.h"
+#include "rtc.h"
 #include "math.h"
 #include "delay.h"
-#include "pid.h"
-#include "exti.h"
-#include "key.h"
-#include "stdio.h"
-#include "rtc.h"
 
-extern TIM_HandleTypeDef g_timx_pwm_chy_handle;
-extern TIM_HandleTypeDef g_timx_encode_chy_handle;
-extern float speed_m;	  
-extern float location;	  
-extern int32_t motor_pwm; /* 电机PWM值 */
-extern int32_t pluse_ele;
+ STEPPER_MOTOR step = {0};  
+
+extern u8 receive_flag;   //���Խ���ͨѶ ���н�����־
 
 void step_motor_init(void)
 {
-	GPIO_InitTypeDef gpio_init_struct;
-	ST1_SHUTDOWN_GPIO_CLK_ENABLE();
-	ST1_ELE_GPIO_CLK_ENABLE();
-	ST1_IO_GPIO_CLK_ENABLE();
-	ST1_HAL1_GPIO_CLK_ENABLE();
-	ST1_HAL2_GPIO_CLK_ENABLE();
-	ST1_HAL3_GPIO_CLK_ENABLE();
-	ST1_IN1_GPIO_CLK_ENABLE();
-	ST1_IN2_GPIO_CLK_ENABLE();
-	ST1_HOME_GPIO_CLK_ENABLE();
-	ST1_DONE_GPIO_CLK_ENABLE();
-	ST1_ALARM_GPIO_CLK_ENABLE();
-	gpio_init_struct.Pin = ST1_SHUTDOWN_GPIO_PIN; 
-	gpio_init_struct.Mode = GPIO_MODE_OUTPUT_OD;  /* 开漏输出(接24V) */
-	gpio_init_struct.Pull = GPIO_NOPULL;
-	gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;									  
-	HAL_GPIO_Init(ST1_SHUTDOWN_GPIO_PORT, &gpio_init_struct);						  
-	HAL_GPIO_WritePin(ST1_SHUTDOWN_GPIO_PORT, ST1_SHUTDOWN_GPIO_PIN, GPIO_PIN_RESET); 
-	gpio_init_struct.Pin = ST1_ELE_GPIO_PIN;			 
-	gpio_init_struct.Mode = GPIO_MODE_INPUT;			 
-	gpio_init_struct.Pull = GPIO_PULLDOWN;				 
-	gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;		 
-	HAL_GPIO_Init(ST1_ELE_GPIO_PORT, &gpio_init_struct); 
-	gpio_init_struct.Pin = ST1_HAL1_GPIO_PIN;			  
-	gpio_init_struct.Mode = GPIO_MODE_INPUT;			  
-	gpio_init_struct.Pull = GPIO_PULLDOWN;				  
-	gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;		  
-	HAL_GPIO_Init(ST1_HAL1_GPIO_PORT, &gpio_init_struct); 
-	gpio_init_struct.Pin = ST1_HAL2_GPIO_PIN;			  
-	gpio_init_struct.Mode = GPIO_MODE_INPUT;			  
-	gpio_init_struct.Pull = GPIO_PULLDOWN;				  
-	gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;		  
-	HAL_GPIO_Init(ST1_HAL2_GPIO_PORT, &gpio_init_struct); 
-	gpio_init_struct.Pin = ST1_HAL3_GPIO_PIN;			  
-	gpio_init_struct.Mode = GPIO_MODE_INPUT;			  
-	gpio_init_struct.Pull = GPIO_NOPULL;				  
-	gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;		  
-	HAL_GPIO_Init(ST1_HAL3_GPIO_PORT, &gpio_init_struct); 
+    GPIO_InitTypeDef gpio_init_struct;
 
-	/* PF9: 平式光电信号输入(双向光耦) - 输入模式 */
-	gpio_init_struct.Pin = ST1_IO_GPIO_PIN;		
-	gpio_init_struct.Mode = GPIO_MODE_INPUT;		
-	gpio_init_struct.Pull = GPIO_PULLDOWN;
-	gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;		
-	HAL_GPIO_Init(ST1_IO_GPIO_PORT, &gpio_init_struct); 
-	dcmotor_stop(); 
-	gpio_init_struct.Pin = ST1_IN1_GPIO_PIN | ST1_IN2_GPIO_PIN;
-	gpio_init_struct.Mode = GPIO_MODE_INPUT;
-	gpio_init_struct.Pull = GPIO_PULLDOWN;
-	gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;
-	HAL_GPIO_Init(ST1_IN1_GPIO_PORT, &gpio_init_struct);
-	// 平式步进回零完成信号输入(双向光耦) PF8
-	gpio_init_struct.Pin = ST1_HOME_GPIO_PIN;
-	gpio_init_struct.Mode = GPIO_MODE_INPUT;
-	gpio_init_struct.Pull = GPIO_PULLDOWN;
-	gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;
-	HAL_GPIO_Init(ST1_HOME_GPIO_PORT, &gpio_init_struct);
-	gpio_init_struct.Pin = ST1_DONE_GPIO_PIN;
-	gpio_init_struct.Mode = GPIO_MODE_OUTPUT_PP;  /* 推挽输出(3.3V) */
-	gpio_init_struct.Pull = GPIO_NOPULL;
-	gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;
-	HAL_GPIO_Init(ST1_DONE_GPIO_PORT, &gpio_init_struct);
-	gpio_init_struct.Pin = ST1_ALARM_GPIO_PIN;
-	gpio_init_struct.Mode = GPIO_MODE_OUTPUT_PP;  /* 推挽输出(3.3V) */
-	gpio_init_struct.Pull = GPIO_NOPULL;
-	gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;
-	HAL_GPIO_Init(ST1_ALARM_GPIO_PORT, &gpio_init_struct);
+    ST1_DIR_GPIO_CLK_ENABLE();           /* PA11 方向 */
+    ST1_EN_GPIO_CLK_ENABLE();            /* PC1 使能 */
+    ST1_ZERO_GPIO_CLK_ENABLE();          /* PC0 回零气缸 */
+    ST1_ZERO1_GPIO_CLK_ENABLE();         /* PF8 回零检测 */
+    ST1_END_GPIO_CLK_ENABLE();           /* PF9 光电到位 */
+    ST1_IO_GPIO_CLK_ENABLE();            /* PC5 IO/拍照 */
+    ST1_DONE_GPIO_CLK_ENABLE();          /* PC4 到位脉冲 */
+    ST1_AUX_GPIO_CLK_ENABLE();           /* PC2 辅助输出 */
+    ST1_HAL1_GPIO_CLK_ENABLE();          /* PE5 霍尔1 */
+    ST1_HAL2_GPIO_CLK_ENABLE();          /* PE6 霍尔2 */
+    ST1_HAL3_GPIO_CLK_ENABLE();          /* PC13 霍尔3 */
 
-	/* PC5: 拍照信号输出(3.3V推挽) */
-	ST1_PHOTO_GPIO_CLK_ENABLE();
-	gpio_init_struct.Pin = ST1_PHOTO_GPIO_PIN;
-	gpio_init_struct.Mode = GPIO_MODE_OUTPUT_PP;
-	gpio_init_struct.Pull = GPIO_NOPULL;
-	gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;
-	HAL_GPIO_Init(ST1_PHOTO_GPIO_PORT, &gpio_init_struct);
+    /* PA11: 方向输出 (推挽) */
+    gpio_init_struct.Pin = ST1_DIR_GPIO_PIN;
+    gpio_init_struct.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio_init_struct.Pull = GPIO_PULLUP;
+    gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(ST1_DIR_GPIO_PORT, &gpio_init_struct);
+
+    /* PC1: 电机使能 (开漏) */
+    gpio_init_struct.Pin = ST1_EN_GPIO_PIN;
+    gpio_init_struct.Mode = GPIO_MODE_OUTPUT_OD;
+    gpio_init_struct.Pull = GPIO_NOPULL;
+    gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(ST1_EN_GPIO_PORT, &gpio_init_struct);
+    HAL_GPIO_WritePin(ST1_EN_GPIO_PORT, ST1_EN_GPIO_PIN, GPIO_PIN_RESET);
+
+    /* PC0: 回零气缸 (开漏) */
+    gpio_init_struct.Pin = ST1_ZERO_GPIO_PIN;
+    gpio_init_struct.Mode = GPIO_MODE_OUTPUT_OD;
+    gpio_init_struct.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(ST1_ZERO_GPIO_PORT, &gpio_init_struct);
+    HAL_GPIO_WritePin(ST1_ZERO_GPIO_PORT, ST1_ZERO_GPIO_PIN, GPIO_PIN_RESET);
+
+    /* PF8: 回零完成检测 (输入) */
+    gpio_init_struct.Pin = ST1_ZERO1_GPIO_PIN;
+    gpio_init_struct.Mode = GPIO_MODE_INPUT;
+    gpio_init_struct.Pull = GPIO_PULLDOWN;
+    HAL_GPIO_Init(ST1_ZERO1_GPIO_PORT, &gpio_init_struct);
+
+    /* PF9: 光电到位检测 (输入) */
+    gpio_init_struct.Pin = ST1_END_GPIO_PIN;
+    gpio_init_struct.Mode = GPIO_MODE_INPUT;
+    gpio_init_struct.Pull = GPIO_PULLDOWN;
+    gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(ST1_END_GPIO_PORT, &gpio_init_struct);
+
+    /* PC5: IO/拍照输出 (推挽) */
+    gpio_init_struct.Pin = ST1_IO_GPIO_PIN;
+    gpio_init_struct.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio_init_struct.Pull = GPIO_PULLUP;
+    gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(ST1_IO_GPIO_PORT, &gpio_init_struct);
+
+    /* PC4: 到位脉冲输出 (推挽) */
+    gpio_init_struct.Pin = ST1_DONE_GPIO_PIN;
+    gpio_init_struct.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio_init_struct.Pull = GPIO_PULLUP;
+    gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(ST1_DONE_GPIO_PORT, &gpio_init_struct);
+
+    /* PC2: 辅助输出 (开漏) */
+    gpio_init_struct.Pin = ST1_AUX_GPIO_PIN;
+    gpio_init_struct.Mode = GPIO_MODE_OUTPUT_OD;
+    gpio_init_struct.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(ST1_AUX_GPIO_PORT, &gpio_init_struct);
+    HAL_GPIO_WritePin(ST1_AUX_GPIO_PORT, ST1_AUX_GPIO_PIN, GPIO_PIN_RESET);
+
+    /* 24V 输入 IO */
+    __HAL_RCC_GPIOF_CLK_ENABLE();   /* PF6, PF7: 24V输入 */
+    __HAL_RCC_GPIOE_CLK_ENABLE();   /* PE2: 复位输入 */
+    gpio_init_struct.Pin = GPIO_PIN_6 | GPIO_PIN_7;
+    gpio_init_struct.Mode = GPIO_MODE_INPUT;
+    gpio_init_struct.Pull = GPIO_PULLDOWN;
+    gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(GPIOF, &gpio_init_struct);
+
+    gpio_init_struct.Pin = GPIO_PIN_2;
+    gpio_init_struct.Mode = GPIO_MODE_INPUT;
+    gpio_init_struct.Pull = GPIO_PULLDOWN;
+    HAL_GPIO_Init(GPIOE, &gpio_init_struct);
+
+    /* 霍尔传感器 (输入, 仅调试用) */
+    gpio_init_struct.Pin = ST1_HAL1_GPIO_PIN;
+    gpio_init_struct.Mode = GPIO_MODE_INPUT;
+    gpio_init_struct.Pull = GPIO_PULLDOWN;
+    gpio_init_struct.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(ST1_HAL1_GPIO_PORT, &gpio_init_struct);
+
+    gpio_init_struct.Pin = ST1_HAL2_GPIO_PIN;
+    HAL_GPIO_Init(ST1_HAL2_GPIO_PORT, &gpio_init_struct);
+
+    gpio_init_struct.Pin = ST1_HAL3_GPIO_PIN;
+    gpio_init_struct.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(ST1_HAL3_GPIO_PORT, &gpio_init_struct);
+
+    /* PC5: 拍照信号 (初始化已在上面作为ST1_IO) */
+    ST1_EN(0);  /* 初始释放使能 */
 }
 
-extern u8 run_printf_flag;
-extern u8 run_flag;
-extern u8 printf_flag;
-extern int time_delay; 
-extern int station_x;  
-extern int error;
-extern int DIR;	  
-extern int start; 
-extern u8 time_out;
-extern TIM_HandleTypeDef TIM5_Handler; 
-extern int32_t Encode_now;
-extern int out;
-extern int Ring;
-extern int Ding;
-extern int pulse_add;
-extern int32_t force;
-extern float SetPoint_P; 
-extern float SetPoint_C; 
-extern int duzhuan_flag;
-extern int undershoot_cnt;  /* 欠冲计数 */
-extern int overshoot_cnt;   /* 过冲计数 */
-extern int passhole_cnt;    /* 过孔位计数 */
-float SetPluse;
 
-extern int alarm;						 
+/********************************************���μӼ���***********************************************/
+speedRampData g_srd               = {STOP,CW,0,0,0,0,0};  /* �Ӽ��ٱ��� */
+__IO int32_t  g_step_position     = 0;                    /* ��ǰλ�� */
+__IO uint8_t  g_motion_sta        = 0;                    /* �Ƿ����˶���0��ֹͣ��1���˶� */
+__IO uint32_t g_add_pulse_count   = 0;                    /* ��������ۼ� */
+       
+extern int32_t step_all;	    //�����ܲ���
+extern int32_t step_decel_2;  //���ٽ��׽׶Σ���һ�μ���
+extern int32_t step_accel_2;  //���ټ��ٽ׶Σ��ڶ��μ���
+extern	int32_t step_max;     //��������ٶ�����
+extern	int32_t step_max_1;     //��������ٶ�����
 
-void step_motor_motion(int num, int dir) 
+//�������������ٶȣ����ٶȣ�����Ӽ��ٵĲ�����С step,accel,decel,speed
+//step:�ܲ���
+//step1:���������������ײ���
+//step2�����������������ײ���
+//accel�����׼��ٶ�
+//decel�����׼��ٶ�
+//speed����������ٶ�
+	void create_t_ctrl_param(int32_t step,int32_t step1, int32_t accel, int32_t step2,int32_t decel, int32_t speed)
 {
-	int hal_x = 0;
-	int hal_y = 0;
-	hal_x = read_hal(); 
-	if (error == 1)
-	{
-		printf("Motor init failed!\r\n");
-		return;
-	}
-
-	if (hal_x == 1 || hal_x == 2 || hal_x == 3 || hal_x == 4 || hal_x == 5)
-	{
-		char ts[32]; rtc_get_time_str(ts, sizeof(ts));
-printf("[%s] Current pos: %d\r\n", ts, hal_x);
-	}
-
-	if (run_printf_flag == 0 && error == 0 && run_flag == 0) 
-	{
-		if (ele_is_triggered()) 
+	if(step==0)
 		{
-			if (dir == 0)  /* 正转 */
-			{
-				DIR = 0;
-				pid_init();
-				motor_start_motion();
-				SetPoint_C = Encode_now;
-				SetPoint_P = Encode_now + 39200;
-				run_flag = 1;
-				delay_ms(500);
-				while (1)
-				{
-					if (Encode_now > SetPoint_C + pluse_ele)
-					{
-						if (ele_is_triggered())
-						{
-							Ring = 0;
-							SetPluse = Encode_now - SetPoint_C;
-							motor_stop_normal();
-							//printf("Motion complete!\r\n");
-							delay_ms(500);
-							if (Encode_now > SetPoint_C + 1000){
-								error = 0;
-							}
-							else
-							{
-								error = 1;
-								alarm = 3;
-								printf("Photo sensor error!\r\n");
-								alarm_pulse();
-							}
-							//printf("before break\r\n");
-							break;
-						}
-					}
-					
-					/* 过孔位但光电未触发：正常停下触发回转，而非等到+5000报警 */
-//					if (Encode_now > SetPoint_P + 1000 && Encode_now <= SetPoint_P + 5000)
-//					{
-//						printf("过孔位,光电未触发,触发回转...\r\n");
-//						passhole_cnt++;
-//						motor_stop_normal();
-//						break;  /* error=0, 下方 else 分支执行回转 */
-//					}
-
-					if (Encode_now > SetPoint_P + 5000)
-					{
-						motor_safe_stop();
-						error = 1;
-						alarm = 10;
-						printf("Overtravel! (passed hole, photo not triggered)\r\n");
-						SetPluse = Encode_now - SetPoint_C;
-						printf("Pulses moved: %f\r\n", SetPluse);
-						alarm_pulse();
-						break;
-					}
-
-					if (check_motion_timeout(4, "Motion timeout! (motor not at target)")) break;
-					if (error == 1) { motor_safe_stop(); error = 1; break; }
-					if (check_24v_loss()) break;
-				}
-
-				if (error == 1) return;
-
-				/* 光电到达后验证工位 */
-				if (ele_is_triggered())
-				{
-					printf_flag = 1;
-					run_flag = 0;
-					run_printf_flag = 0;
-					hal_y = read_hal();
-					//printf("hal_y=%d\r\n", hal_y);
-					handle_station_verify(hal_x, hal_y);
-					//printf("verify done\r\n");
-				}
-
-				else
-				{
-
-					/* 过孔到达但光电未触发，需调整 */
-					if (Encode_now < SetPoint_P - 300)
-					{
-						char ts[32]; rtc_get_time_str(ts, sizeof(ts));
-printf("[%s] Current pos: %d\r\n", ts, Encode_now);
-						undershoot_cnt++;
-						delay_ms(100);
-						SetPoint_C = Encode_now;  /* 重置起点, 用于堵转检测 */
-						motor_start_motion();
-						run_flag = 2;
-						Ring = 0;
-						while (1)
-						{
-							if (Encode_now > SetPoint_C + pluse_ele)
-							{
-								if (ele_is_triggered())
-								{
-									Ring = 0;
-									SetPluse = Encode_now - SetPoint_C;
-									motor_stop_normal();
-									break;
-								}
-							}
-
-							if (check_motion_timeout(5, "Motion timeout!")) break;
-							if (error == 1) { motor_safe_stop(); error = 1; break; }
-							if (check_24v_loss()) break;
-						}
-					}
-
-					else if (Encode_now > SetPoint_P + 300)
-					{
-						char ts[32]; rtc_get_time_str(ts, sizeof(ts));
-printf("[%s] Current pos: %d\r\n", ts, Encode_now);
-						overshoot_cnt++;
-						delay_ms(100);
-						SetPoint_C = Encode_now;  /* 重置起点, 用于堵转检测 */
-						motor_start_motion();
-						run_flag = 3;
-						Ring = 0;
-						while (1)
-						{
-							if (ele_is_triggered())
-							{
-								Ring = 0;
-								SetPluse = Encode_now - SetPoint_C;
-								motor_stop_normal();
-								break;
-							}
-
-							if (check_motion_timeout(6, "Motion timeout!")) break;
-							if (error == 1) { motor_safe_stop(); error = 1; break; }
-							if (check_24v_loss()) break;
-						}
-					}
-
-					if (error == 1) return;
-					delay_ms(500);
-					if (ele_is_triggered())
-					{
-						printf_flag = 1;
-						run_flag = 0;
-						run_printf_flag = 0;
-						printf("2nd positioning OK!\r\n");
-						hal_y = read_hal();
-						handle_station_verify(hal_x, hal_y);
-					}
-
-					else
-					{
-						error = 1;
-						alarm = 7;
-						printf("2nd positioning failed!\r\n");
-						alarm_pulse();
-					}
-				}
-			}
-
-			else if (dir == 1)  /* 反转 */
-			{
-				DIR = 1;
-				pid_init();
-				motor_start_motion();
-				SetPoint_C = Encode_now;
-				SetPoint_P = Encode_now - 39200;
-				run_flag = 1;
-				delay_ms(500);
-				while (1)
-				{
-					if (Encode_now < SetPoint_C - pluse_ele)
-					{
-						if (ele_is_triggered())
-						{
-							Ring = 0;
-							SetPluse = Encode_now - SetPoint_C;
-							motor_stop_normal();
-							delay_ms(500);
-							if (Encode_now < SetPoint_C - 1000)
-								error = 0;
-							else
-							{
-								error = 1;
-								alarm = 3;
-								printf("Photo sensor error!\r\n");
-								alarm_pulse();
-							}
-
-							break;
-						}
-					}
-
-					/* 过孔位但光电未触发：正常停下触发正向调整，而非等到-5000报警 */
-//					if (Encode_now < SetPoint_P - 1000 && Encode_now >= SetPoint_P - 5000)
-//					{
-//						printf("过孔位,光电未触发,触发正向调整...\r\n");
-//						passhole_cnt++;
-//						motor_stop_normal();
-//						break;  /* error=0, 下方 else 分支执行正向修正 */
-//					}
-
-					if (Encode_now < SetPoint_P - 5000)
-					{
-						motor_safe_stop();
-						error = 1;
-						alarm = 10;
-						printf("Rev overtravel! (passed hole, photo not triggered)\r\n");
-						SetPluse = Encode_now - SetPoint_C;
-						printf("Pulses moved: %f\r\n", SetPluse);
-						alarm_pulse();
-						break;
-					}
-
-					if (check_motion_timeout(4, "Motion timeout! (motor not at target)")) break;
-					if (error == 1) { motor_safe_stop(); error = 1; break; }
-					if (check_24v_loss()) break;
-				}
-
-				if (error == 1) return;
-
-				/* 光电到达后验证工位 */
-				if (ele_is_triggered())
-				{
-					printf_flag = 1;
-					run_flag = 0;
-					run_printf_flag = 0;
-					hal_y = read_hal();
-					handle_station_verify(hal_x, hal_y);
-				}
-
-				else
-				{
-
-					/* 过孔到达但光电未触发，需调整 */
-					if (Encode_now > SetPoint_P + 300)
-					{
-						char ts[32]; rtc_get_time_str(ts, sizeof(ts));
-printf("[%s] Current pos: %d\r\n", ts, Encode_now);
-						undershoot_cnt++;
-						delay_ms(100);
-						SetPoint_C = Encode_now;  /* 重置起点, 用于堵转检测 */
-						motor_start_motion();
-						run_flag = 3;
-						Ring = 0;
-						while (1)
-						{
-							if (Encode_now < SetPoint_C - pluse_ele)
-							{
-								if (ele_is_triggered())
-								{
-									Ring = 0;
-									SetPluse = Encode_now - SetPoint_C;
-									motor_stop_normal();
-									break;
-								}
-							}
-
-							if (check_motion_timeout(5, "Motion timeout!")) break;
-							if (error == 1) { motor_safe_stop(); error = 1; break; }
-							if (check_24v_loss()) break;
-						}
-					}
-
-					else if (Encode_now < SetPoint_P - 300)
-					{
-						char ts[32]; rtc_get_time_str(ts, sizeof(ts));
-printf("[%s] Current pos: %d\r\n", ts, Encode_now);
-						overshoot_cnt++;
-						delay_ms(100);
-						SetPoint_C = Encode_now;  /* 重置起点, 用于堵转检测 */
-						motor_start_motion();
-						run_flag = 2;
-						Ring = 0;
-						while (1)
-						{
-							if (ele_is_triggered())
-							{
-								Ring = 0;
-								SetPluse = Encode_now - SetPoint_C;
-								motor_stop_normal();
-								break;
-							}
-
-							if (check_motion_timeout(6, "Motion timeout!")) break;
-							if (error == 1) { motor_safe_stop(); error = 1; break; }
-							if (check_24v_loss()) break;
-						}
-					}
-
-					if (error == 1) return;
-					delay_ms(500);
-					if (ele_is_triggered())
-					{
-						printf_flag = 1;
-						run_flag = 0;
-						run_printf_flag = 0;
-						printf("2nd positioning OK!\r\n");
-						hal_y = read_hal();
-						handle_station_verify(hal_x, hal_y);
-					}
-
-					else
-					{
-						printf_flag = 0;
-						error = 1;
-						alarm = 7;
-						printf("2nd positioning failed!\r\n");
-						alarm_pulse();
-					}
-				}
-			}
-		}
-
-		else
-		{
-			printf("Photo sensor error, station detect failed!\r\n");
-			alarm_pulse();
-		} 
-	}
-	return;
-}
-
-void motor_init(void)
-{
-	if (HAL_GPIO_ReadPin(ST1_ELE_GPIO_PORT, ST1_ELE_GPIO_PIN) == 0) 
-	{
-		if (error == 1)
-		{
-			printf("Motor initializing, please wait!\r\n");
 			return;
 		}
-
-		else if (error == 0)
-		{
-			if (run_printf_flag == 0) 
-				{
-					pid_init();
-					motor_start_motion();
-					run_flag = 2;
-				delay_ms(20);
-				while (1) 
-				{
-
-				/* 找光电下降沿: 从不在孔内(1)变为在孔内(0) */
-					if (HAL_GPIO_ReadPin(ST1_ELE_GPIO_PORT, ST1_ELE_GPIO_PIN) == 1)
-					{
-						delay_ms(10);
-						if (HAL_GPIO_ReadPin(ST1_ELE_GPIO_PORT, ST1_ELE_GPIO_PIN) == 0)
-						{
-							Ring = 0;
-							motor_stop_normal();
-							break;
-						}
-					}
-
-					if (error == 1) break;
-					if (check_24v_loss()) break;
-				}
-
-				if (error == 1) return;
-				delay_ms(300);
-				if (ele_is_triggered())
-				{
-					printf_flag = 1;
-					run_flag = 0;
-					run_printf_flag = 0;
-				}
-
-				else
-				{
-
-					/* 第一次未找到, 再试一次 */
-					pid_init();
-					motor_start_motion();
-					run_flag = 2;
-					delay_ms(20);
-					while (1) 
-					{
-						if (ele_is_triggered())
-						{
-							Ring = 0;
-							motor_stop_normal();
-							break;
-						}
-
-						if (error == 1) break;
-						if (check_24v_loss()) break;
-					}
-
-					if (error == 1) return;
-					delay_ms(300);
-					if (ele_is_triggered())
-					{
-						printf_flag = 1;
-						run_flag = 0;
-						run_printf_flag = 0;
-					}
-
-					else
-					{
-						error = 1;
-						run_flag = 0;
-						run_printf_flag = 0;
-						alarm = 8;
-						printf("Motor init failed, check hardware!\r\n");
-						alarm_pulse();
-					}
-				}
+	if(g_motion_sta != STOP)        /* ֻ�������������ֹͣ��ʱ��ż���*/
+        return;
+	//***************�������*********************************//
+	  //������������10000������������λ20000
+//	   if(step>=10000 && step>0)   //������������Ϊ16000����������λ
+//		 {
+//			 step=10000;
+//		 }
+//		 else if(step<=-10000 && step<0) //������������Ϊ-16000��������λ
+//		 {
+//			 step=-10000;
+//		 }		    
+	   if(step<0)
+			{
+				step_all=-step;
+				g_srd.step_decel1=step_all-step2-step_decel_2;            //����1����
+        g_srd.step_decel2=step_all-step2;        //����2����
+			}else
+			{
+				step_all=step;
+				g_srd.step_decel1=step_all-step2-step_decel_2;            //����1����
+        g_srd.step_decel2=step_all-step2;        //����2����
 			}
+			
+		 step_max=12000/speed;  //��������ٶ�ʱ��delay�ļ���
+	   g_srd.step_accel1=0;           //��ʼ����1���� 
+     g_srd.step_accel2=step1;        //����2����
+	   g_srd.step_run=step1+step_accel_2;               //�������в���
+					      
+    if(step < 0)                    /* ����Ϊ���� */
+    {   
+        g_srd.dir = CCW;            /* ��ʱ�뷽����ת 0*/
+        ST1_DIR(CCW);
+        step = -step-1;               /* ��ȡ��������ֵ */
+    }
+    else
+    {
+        g_srd.dir = CW;             /* ˳ʱ�뷽����ת 1*/
+        ST1_DIR(CW);
+			  step = step-1;
+    }
+   if(step != 0)              /* ���Ŀ���˶�������Ϊ0*/
+    {
+         g_srd.step_delay=6220;   //���ٶ�4.5��ÿ��
+		}
+    g_motion_sta = 1;                                           /* ���Ϊ�˶�״̬ */
+	//	receive_flag=1;
+		
+		/*****������ټӼ���ʱ�ļӼ���******/
+	
+		g_srd.step_accel1_delay=accel;    //���׼��ٶ�
+		g_srd.step_decel1_delay=decel;    //���׼��ٶ�
+		
+		g_srd.step_accel2_delay=(6220-step_max-step1*accel)/step_accel_2;  
+		g_srd.step_decel2_delay=(6220-step_max-step2*decel)/step_decel_2;
+		
+		//�������ƣ���ֹΪ��ֵ
+		if(6220-step_max-step1*accel<0)
+		{
+			g_srd.step_accel2_delay=10;
+		}
+		
+		if(6220-step_max-step2*decel<0)
+		{
+			g_srd.step_decel2_delay=10;
+		}
+		
+		g_srd.run_state = ACCEL;
+		
+     HAL_TIM_OC_Start_IT(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY);                                 /* ʹ�ܶ�ʱ��ͨ�� */
+}
+
+
+
+/**
+  * @brief  ��ʱ���Ƚ��ж�
+  * @param  htim����ʱ�����ָ��
+  * @note   ��
+  * @retval ��
+  */
+
+extern  int32_t step_count; 
+extern  u8 printf_flag;
+extern  int time_out;
+extern int step_pass;                //�����ٶ�
+extern int32_t pulse_compensate;     //����������
+extern int speed_rcc;                //�����ٶ�
+extern int level_speed;              //����leve�µ��������
+//���й켣ѡ��level=0��1��2��3��4��5��6��7
+//level=0��18��ÿ�������˶�
+//level=1������8000����  �����ֶμӼ���
+//level=2����16000���壬�м���ٹ��ף���������������   ��pluse_compensate   **************
+//level=3�� �������岹�� һ����λ����  ������8000+pulse_compensate  ������-pulse_compensate;  **********
+//level=4�� ������������������λ2      ����16000+pulse_compensate   ������-pulse_compensate;  **********
+//level=5�� ���׶�������������100���٣�100����
+//level=6�� ��8000����������������  ��pluse_compensate    *********
+//level=7:  �Խ��׶��ٶ���������
+void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
+{    
+    uint32_t tim_count = 0;
+    uint32_t tmp = 0;
+    static uint8_t i = 0;                              /* ��ʱ��ʹ�÷�תģʽ����Ҫ���������жϲ����һ���������� */
+	  static uint8_t j = 0;  
+	    
+    if(htim->Instance==TIM8)
+    {		
+			if(level_speed==0)
+			{
+				tim_count = __HAL_TIM_GET_COUNTER(&g_timx_pwm_chy_handle);
+			  tmp = tim_count + 1000/2;      //18��ÿ��
+       __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY,tmp);
+				j++;                                                /* ��ʱ���жϴ�������ֵ */
+        if(j == 2)                                          /* 2�Σ�˵���Ѿ����һ���������� */
+        { 
+         step_count++;
+					if(step_count >=step_all) 
+					{
+						   step_count = 0;                             						
+							HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+							g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+							//receive_flag=0;
+						 // printf_flag=1;
+							g_add_pulse_count=0;
+							step_count=0;
+						 // HAL_TIM_Base_Stop_IT(&TIM5_Handler);
+             // time_out=0;	
+					}
+					j=0;
+				}		
+			}			
+			else if	(level_speed==1)	  //һ����λ������ͣ�������� ��������12000���� T��
+			{
+		    tim_count = __HAL_TIM_GET_COUNTER(&g_timx_pwm_chy_handle);
+			  tmp = tim_count + g_srd.step_delay/2;    //���ٶ�4.5��ÿ��           
+       __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY,tmp);
+        i++;                                                /* ��ʱ���жϴ�������ֵ */
+        if(i == 2)                                          /* 2�Σ�˵���Ѿ����һ���������� */
+        { 				
+					  switch(g_srd.run_state)                         /* �Ӽ������߽׶� */
+            {
+							case STOP:
+                step_count = 0;                                        
+                HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+                g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+							  //receive_flag=0;
+							 // printf_flag=1;
+							  step_count=0;	
+						  //	HAL_TIM_Base_Stop_IT(&TIM5_Handler);
+              // time_out=0;
+                break;
+							
+            case ACCEL:
+                step_count++;                               					  
+								if(0<step_count & step_count<=g_srd.step_accel2)   //��һ�μ�������	
+								{
+									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //��һ�μ��� delay�ı�
+									 if(g_srd.step_delay<step_max)  //��������ٶ�����
+										{
+											g_srd.step_delay=step_max;
+										}
+								}
+								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)//�ڶ��μ���
+                {
+									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay; //�ڶ��μ��� delay�ı�
+									
+									 if(g_srd.step_delay<step_max)  //��������ٶ�����
+										{
+											g_srd.step_delay=step_max;
+										}
+                }
+								else if(g_srd.step_run<step_count)          //������������
+                {
+                    g_srd.run_state = RUN;                  /* ����Ϊ��������״̬ */
+                }
+                break;
+								
+            case RUN:             
+                step_count++;                               /* ������1 */              
+								if( g_srd.step_run<step_count & step_count<=g_srd.step_decel1)  //��������
+								{
+									g_srd.step_delay =g_srd.step_delay ;
+								}
+								else if( g_srd.step_decel1<step_count)         /* ��Ҫ��ʼ���� */
+                {
+                    g_srd.run_state = DECEL;                /* ״̬�ı�Ϊ���� */
+                }
+                break;
+
+            case DECEL:
+                step_count++;                               /* ������1 */                          
+								if( g_srd.step_decel1<step_count & step_count<=g_srd.step_decel2)         //��һ�μ���
+								{
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;         
+								}
+								else if( g_srd.step_decel2<step_count & step_count<=step_all-2)           //�ڶ��μ���
+								{    
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_accel1_delay;
+								}              
+								else if(step_count >step_all-2)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                    g_srd.run_state = STOP;
+                }
+                break;
+            }
+						 i = 0;                                          /* ���㶨ʱ���жϴ�������ֵ */
+        }				
+			}
+			else if	(level_speed==2)//������ʱ���м���ٹ��ף�������  ������24000���壬���������������
+			{
+		    tim_count = __HAL_TIM_GET_COUNTER(&g_timx_pwm_chy_handle);
+			  tmp = tim_count + g_srd.step_delay/2;             
+       __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY,tmp);
+        i++;                                                /* ��ʱ���жϴ�������ֵ */
+        if(i == 2)                                          /* 2�Σ�˵���Ѿ����һ���������� */
+        { 				
+					  switch(g_srd.run_state)                         /* �Ӽ������߽׶� */
+            {
+							case STOP:
+                step_count = 0;                             /* ���㲽�������� */
+                /* �ر�ͨ��*/
+                HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+                g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+							//  receive_flag=0;
+							 // printf_flag=1;
+							  step_count=0;
+              //  HAL_TIM_Base_Stop_IT(&TIM5_Handler);
+               // time_out=0;							
+                break;
+            case ACCEL:     //��һ�μ��ٽ׶�                      
+                step_count++;                               					 
+								if(0<step_count & step_count<=g_srd.step_accel2) 	                     //���е�һ�μ���
+								{
+									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay;
+									 if(g_srd.step_delay<step_max)  //��������ٶ�����
+										{
+											g_srd.step_delay=step_max;
+										}
+								}
+								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)     //���еڶ��μ���
+                {
+									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay;
+									if(g_srd.step_delay<step_max)
+										{
+											g_srd.step_delay=step_max;
+										}
+                }
+								else if(g_srd.step_run<step_count)                                      /* ����Ƿ�����Ҫ���ٵĲ��� */
+                {
+                    g_srd.run_state = RUN;                                              /* ����Ϊ��������״̬ */	
+                }
+                break;
+            case RUN:
+                step_count++;  
+						    g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
+               if( g_srd.step_run<step_count & step_count<=g_srd.step_decel1)            //��������
+								{
+									g_srd.step_delay =g_srd.step_delay ;
+									                                 //��¼��һ�����е�����ٶ�
+									step_max_1=g_srd.step_delay;
+								}
+								else if( g_srd.step_decel1<step_count)                                   /* ��Ҫ��ʼ���� */
+                {
+                    g_srd.run_state = DECEL;                                             /* ״̬�ı�Ϊ���� */
+                }   
+                break; 
+						case DECEL:
+                step_count++;
+						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+								{
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
+									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 {
+										 g_srd.step_delay =step_pass;   
+									 }
+								}												
+                /* ����Ƿ�Ϊ���һ�� */
+								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                  g_srd.run_state = ACCEL2;								
+									step_count=0;	                 								  
+                }
+                break;									
+						case ACCEL2:
+                step_count++;                               /* ������1*/						 
+								 if(0<step_count & step_count<=100) //��֤�ȶ�����               /* ������׵����壬��֤�����ٶȽϵ�*/
+						     {
+									 g_srd.step_delay = g_srd.step_delay;
+								 }
+						    else if(100<step_count & step_count<=g_srd.step_run) 	
+								{
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //���ټ���
+//									if(g_srd.step_delay<step_max)
+//										{
+//											g_srd.step_delay=step_max;
+//										}									
+									if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+										{
+											g_srd.step_delay=step_max_1;
+									  }
+								}								
+								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+                {
+                  g_srd.run_state = RUN2;                  /* ����Ϊ��������״̬ */
+                }
+						
+                break;								
+					 case RUN2:
+                step_count++;                                          
+               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //�ܲ���-����������-����ٲ���
+								{
+									g_srd.step_delay =g_srd.step_delay ;
+								}
+								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* ��Ҫ��ʼ���� */
+                {
+                   g_srd.run_state = DECEL2;                /* ״̬�ı�Ϊ���� */
+                }   
+                break; 
+					case DECEL2:
+                step_count++;                                      
+							if( step_all-pulse_compensate-step_decel_2<step_count & step_count<=step_all-pulse_compensate)         /* ��Ҫ��ʼ���� */
+								{
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
+									if(g_srd.step_delay>speed_rcc)
+									 {
+										 g_srd.step_delay=speed_rcc;
+									 }	
+								}															 
+								else if(step_count >step_all-pulse_compensate)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                    g_srd.run_state = RUN3;
+                }
+                break;	
+					case RUN3:
+               step_count++;
+					    if(step_all-pulse_compensate<step_count&step_count<step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                    g_srd.step_delay=speed_rcc;
+                }
+							else if(step_count >=step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+									  g_srd.run_state = STOP;
+                }
+							break;		
+            }
+						 i = 0;                                          /* ���㶨ʱ���жϴ�������ֵ */
+        }				
+			}
+			 else if	(level_speed==3)	  //�������岹�� һ����λ����  ������12000+pulse_compensate
+			{	
+				tim_count = __HAL_TIM_GET_COUNTER(&g_timx_pwm_chy_handle);
+			  tmp = tim_count + g_srd.step_delay/2;             
+       __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY,tmp);
+        i++;                                                /* ��ʱ���жϴ�������ֵ */
+        if(i == 2)                                          /* 2�Σ�˵���Ѿ����һ���������� */
+        { 				
+					  switch(g_srd.run_state)                        
+            {
+							case STOP:
+                step_count = 0;                           
+                /* �ر�ͨ��*/
+                HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+                g_motion_sta = 0;                          
+							 // receive_flag=0;
+							 // printf_flag=1;
+							  step_count=0;	
+             //  HAL_TIM_Base_Stop_IT(&TIM5_Handler);
+             // time_out=0;							
+                break;
+            case ACCEL:                                        
+                step_count++;                             					 
+								if(0<step_count & step_count<=g_srd.step_accel2) 	                        //��һ�μ��ٽ׶�   
+								{
+									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay;
+									if(g_srd.step_delay<step_max)
+										{
+											g_srd.step_delay=step_max;
+										}
+								}
+								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)        //�ڶ��μ���
+                {
+									  g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay;
+									if(g_srd.step_delay<step_max)
+										{
+											g_srd.step_delay=step_max;
+										}
+                }
+								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+                {
+                  g_srd.run_state = RUN;                   /* ����Ϊ��������״̬ */
+                }
+                break;
+            case RUN:
+                step_count++;                                          
+               if( g_srd.step_run<step_count & step_count<=g_srd.step_decel1) 
+								{
+									g_srd.step_delay =g_srd.step_delay ;
+								}
+								else if( g_srd.step_decel1<step_count)         /* ��Ҫ��ʼ���� */
+                {
+                  g_srd.run_state = DECEL;                      /* ״̬�ı�Ϊ���� */
+                }   
+                break; 
+						case DECEL:
+                step_count++;                             
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)         /* ��Ҫ��ʼ���� */
+								{
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
+									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 {
+										  g_srd.step_delay =step_pass;   
+									 }
+								}												              
+								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                    g_srd.run_state = ACCEL2;
+									  step_count=0;									  
+                }
+                break;									
+						case ACCEL2:
+                step_count++;                            					 
+                if(0<step_count & step_count<=pulse_compensate-2) 	
+								{
+									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay;
+									  if(g_srd.step_delay<speed_rcc)
+										{
+											g_srd.step_delay=speed_rcc;
+										}
+								}								
+								else if(pulse_compensate-2<step_count)
+                {
+                  g_srd.run_state = RUN3; 
+									 step_count=0;
+									if(g_srd.dir == CCW )
+									{        
+                    ST1_DIR(CW);
+									}else
+									{
+										ST1_DIR(CCW);
+									}		
+								}														
+                break;								
+					case RUN2:     
+                step_count++;                                        
+               if( 100<step_count & step_count<=pulse_compensate-100) 
+								{
+									g_srd.step_delay =g_srd.step_delay ;
+								}
+								else if( pulse_compensate-100<step_count)         /* ��Ҫ��ʼ���� */
+                {
+                  g_srd.run_state = DECEL2;                /* ״̬�ı�Ϊ���� */
+                }   
+                break; 
+					case DECEL2:
+                step_count++;                                          
+							if( pulse_compensate-100<step_count & step_count<=pulse_compensate-2)         /* ��Ҫ��ʼ���� */
+								{
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
+								}
+                /* ����Ƿ�Ϊ���һ�� */
+								else if(step_count >pulse_compensate-2)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                   g_srd.run_state = RUN3;
+									 step_count=0;
+									if(g_srd.dir == CCW )
+									{        
+                    ST1_DIR(CW);
+									}else
+									{
+										ST1_DIR(CCW);
+									}									
+                }
+                break;	
+          case RUN3:
+						    step_count++;
+					      g_srd.step_delay =speed_rcc;
+						    if(step_count >pulse_compensate-3)
+								{
+									g_srd.run_state = STOP;
+								}					      
+						    break;
+            }
+						 i = 0;                                          /* ���㶨ʱ���жϴ�������ֵ */
+        }							 
+			 }
+			else if	(level_speed==4)	  //������������������λ2    ����24000+pulse_compensate
+			{
+       tim_count = __HAL_TIM_GET_COUNTER(&g_timx_pwm_chy_handle);
+			  tmp = tim_count + g_srd.step_delay/2;             
+       __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY,tmp);
+        i++;                                                /* ��ʱ���жϴ�������ֵ */
+        if(i == 2)                                          /* 2�Σ�˵���Ѿ����һ���������� */
+        { 				
+					  switch(g_srd.run_state)                         /* �Ӽ������߽׶� */
+            {
+							case STOP:
+                step_count = 0;                             /* ���㲽�������� */
+                /* �ر�ͨ��*/
+                HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+                g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+							//  receive_flag=0;
+							//  printf_flag=1;
+							  step_count=0;	
+              //  HAL_TIM_Base_Stop_IT(&TIM5_Handler);
+              //  time_out=0;														
+                break;
+            case ACCEL:     //��һ�μ��ٽ׶�                       
+                step_count++;                             					 
+								if(0<step_count & step_count<=g_srd.step_accel2) 	
+								{
+									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay;
+									 if(g_srd.step_delay<step_max)  //��������ٶ�����
+										{
+											g_srd.step_delay=step_max;
+										}
+								}
+								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+                {
+									  g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay;
+									if(g_srd.step_delay<step_max)
+										{
+											g_srd.step_delay=step_max;
+										}
+                }
+								else if(g_srd.step_run<step_count)          /* ����Ƿ�����Ҫ���ٵĲ��� */
+                {
+                    g_srd.run_state = RUN;                  /* ����Ϊ��������״̬ */
+                }
+                break;
+            case RUN:
+                step_count++;  
+						     g_srd.step_decel1=step_all-300;  //����500�ļ��ٲ�������
+               if( g_srd.step_run<step_count & step_count<=g_srd.step_decel1) 
+								{
+									g_srd.step_delay =g_srd.step_delay ;
+									step_max_1=g_srd.step_delay;
+								}
+								else if( g_srd.step_decel1<step_count)         /* ��Ҫ��ʼ���� */
+                {
+                   g_srd.run_state = DECEL;                    /* ״̬�ı�Ϊ���� */
+                }   
+                break; 
+						case DECEL:
+                step_count++;
+                g_srd.step_decel1=step_all-300;  //����500�ļ��ٲ�������						
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)         /* ��Ҫ��ʼ���� */
+								{
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
+									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 {
+										  g_srd.step_delay =step_pass;   
+									 }
+								}												
+                /* ����Ƿ�Ϊ���һ�� */
+								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                    g_srd.run_state = ACCEL2;
+									 // g_srd.step_delay =4000;
+									  step_count=0;									  
+                }
+                break;									
+						case ACCEL2:        
+                step_count++; 
+						   if(0<step_count & step_count<=100) //��֤�ȶ�����      /*����������壬��֤���ٽ���*/
+						     {
+									 g_srd.step_delay = g_srd.step_delay;
+								 }
+								else if(100<step_count & step_count<=g_srd.step_run) 	  //ֱ�ӿ����
+								{									
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay;
+//									if(g_srd.step_delay<step_max)
+//										{
+//											g_srd.step_delay=step_max;
+//										}
+										if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+										{
+											g_srd.step_delay=step_max_1;
+									  }
+								}								
+								else if(g_srd.step_run<step_count)           /* ����Ƿ�����Ҫ���ٵĲ��� */
+                {
+                    g_srd.run_state = RUN2;                  /* ����Ϊ��������״̬ */
+                }
+								 
+                break;								
+					case RUN2:
+                step_count++;                                       
+               if( g_srd.step_run<step_count & step_count<=g_srd.step_decel1) 
+								{
+									g_srd.step_delay =g_srd.step_delay ;
+								}
+								else if( g_srd.step_decel1<step_count)         /* ��Ҫ��ʼ���� */
+                {
+                  g_srd.run_state = DECEL2;                    /* ״̬�ı�Ϊ���� */
+                }   
+                break; 
+					case DECEL2:
+                step_count++;                                         
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)         //ֱ�ӿ����
+								{
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
+									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 {
+										  g_srd.step_delay =step_pass;   
+									 }
+								}												
+                /* ����Ƿ�Ϊ���һ�� */
+								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                    g_srd.run_state = ACCEL3;
+									  step_count=0;									  
+                }
+                break;
+					case ACCEL3:
+                step_count++;                               					 
+					        if(0<step_count & step_count<=pulse_compensate-2) 	
+								{
+									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay;
+									  if(g_srd.step_delay<speed_rcc)
+										{
+											g_srd.step_delay=speed_rcc;
+										}
+								}								
+								else if(pulse_compensate-2<step_count)
+                {
+                 g_srd.run_state = RUN3;
+									 step_count=0;
+									if(g_srd.dir == CCW )
+									{        
+                    ST1_DIR(CW);
+									}else
+									{
+										ST1_DIR(CCW);
+									}									
+                }	
+                break;													
+          case RUN3:
+						    step_count++;
+					      g_srd.step_delay =speed_rcc;
+						    if(step_count >pulse_compensate-3)
+								{
+									g_srd.run_state = STOP;
+								}					      
+						    break;
+            }
+						 i = 0;                                          /* ���㶨ʱ���жϴ�������ֵ */
+        }								 			 
+		 }				 		 
+			else if	(level_speed==6)	  //��12000���壬�����������
+			{
+				 tim_count = __HAL_TIM_GET_COUNTER(&g_timx_pwm_chy_handle);
+			  tmp = tim_count + g_srd.step_delay/2;               /* ����Cֵ�������Ҫ��ת���ε�������Ҫ����2 */
+       __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY,tmp);
+        i++;                                                /* ��ʱ���жϴ�������ֵ */
+        if(i == 2)                                          /* 2�Σ�˵���Ѿ����һ���������� */
+        { 				
+					  switch(g_srd.run_state)                         /* �Ӽ������߽׶� */
+            {
+						case STOP:
+                step_count = 0;                             /* ���㲽�������� */
+                HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+                g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+							 // receive_flag=0;
+							  step_count=0;							
+							 // printf_flag=1;
+						   // HAL_TIM_Base_Stop_IT(&TIM5_Handler);
+               // time_out=0;
+                break;
+
+            case ACCEL:
+                step_count++;                          						 
+								if(0<step_count & step_count<=g_srd.step_accel2) 	                        //��һ�μ���
+								{
+									 g_srd.step_delay = g_srd.step_delay-g_srd.step_accel1_delay;
+									if(g_srd.step_delay<step_max)																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																													
+										{
+											g_srd.step_delay=step_max;
+										}
+								}
+								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+                {
+									  g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay;          //�ڶ��μ���
+									if(g_srd.step_delay<step_max)
+										{
+											g_srd.step_delay=step_max;
+										}
+                }
+								else if(g_srd.step_run<step_count)          /* ����Ƿ�����Ҫ���ٵĲ��� */
+                {
+                    g_srd.run_state = RUN;                  /* ����Ϊ��������״̬ */
+                }
+                break;
+
+            case RUN:    
+                step_count++;                                        
+								if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2)   //�������м��ٶ�Ϊ100
+								{
+									g_srd.step_delay =g_srd.step_delay ;
+								}
+								else if( step_all-pulse_compensate-step_decel_2<step_count)                           /* ��Ҫ��ʼ���� */
+                {
+                    g_srd.run_state = DECEL;                                /* ״̬�ı�Ϊ���� */
+                }
+                break;
+
+           case DECEL:
+                step_count++;                                      
+							if( step_all-pulse_compensate-step_decel_2<step_count & step_count<=step_all-pulse_compensate)         /* ��Ҫ��ʼ���� */
+								{
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
+									if(g_srd.step_delay>speed_rcc)
+									 {
+										 g_srd.step_delay=speed_rcc;
+									 }	
+								}															 
+								else if(step_count >step_all-pulse_compensate)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                    g_srd.run_state = RUN2;
+                }
+                break;	
+					 case RUN2:
+               step_count++;				
+					    if(step_all-pulse_compensate<step_count & step_count<=step_all-2)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                    g_srd.step_delay=speed_rcc;
+                }
+							else if(step_count >step_all-2)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+									  g_srd.run_state = STOP;
+                }
+							break;
+            }
+						 i = 0;                                          /* ���㶨ʱ���жϴ�������ֵ */
+        }				 
+			 }
+			else if(level_speed==7)     //�Խ��׶��ٶ���������
+			{
+				tim_count = __HAL_TIM_GET_COUNTER(&g_timx_pwm_chy_handle);
+			  tmp = tim_count + speed_rcc/2;               /* ����Cֵ�������Ҫ��ת���ε�������Ҫ����2 */
+       __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY,tmp);
+				j++;                                                /* ��ʱ���жϴ�������ֵ */
+        if(j == 2)                                          /* 2�Σ�˵���Ѿ����һ���������� */
+        { 
+         step_count++;
+					if(step_count >=step_all) 
+					{
+					 step_count = 0;                             /* ���㲽�������� */
+						/* �ر�ͨ��*/
+						HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+						g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+						//receive_flag=0;
+					//	printf_flag=1;						
+						g_add_pulse_count=0;
+						step_count=0;
+						//HAL_TIM_Base_Stop_IT(&TIM5_Handler);
+           // time_out=0;
+					}
+					j=0;
+				}		
+			}
+			else if(level_speed==8)     //�����ף��м���ٹ��ף�������������36000���壬�����������
+			{
+				 tim_count = __HAL_TIM_GET_COUNTER(&g_timx_pwm_chy_handle);
+			  tmp = tim_count + g_srd.step_delay/2;             
+       __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY,tmp);
+        i++;                                                /* ��ʱ���жϴ�������ֵ */
+        if(i == 2)                                          /* 2�Σ�˵���Ѿ����һ���������� */
+        { 				
+					  switch(g_srd.run_state)                         /* �Ӽ������߽׶� */
+            {
+							case STOP:
+                step_count = 0;                             /* ���㲽�������� */
+                /* �ر�ͨ��*/
+                HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+                g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+							 // receive_flag=0;
+							 // printf_flag=1;
+							  step_count=0;
+              //  HAL_TIM_Base_Stop_IT(&TIM5_Handler);
+               // time_out=0;							
+                break;
+            case ACCEL:     //��һ�μ��ٽ׶�                      
+                step_count++;                               					 
+								if(0<step_count & step_count<=g_srd.step_accel2) 	                     //���е�һ�μ���
+								{
+									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay;
+									 if(g_srd.step_delay<step_max)  //��������ٶ�����
+										{
+											g_srd.step_delay=step_max;
+										}
+								}
+								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)     //���еڶ��μ���
+                {
+									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay;
+									if(g_srd.step_delay<step_max)
+										{
+											g_srd.step_delay=step_max;
+										}
+                }
+								else if(g_srd.step_run<step_count)                                      /* ����Ƿ�����Ҫ���ٵĲ��� */
+                {
+                    g_srd.run_state = RUN;                                              /* ����Ϊ��������״̬ */	
+                }
+                break;
+            case RUN:
+                step_count++;  
+						    g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
+               if( g_srd.step_run<step_count & step_count<=g_srd.step_decel1)            //��������
+								{
+									g_srd.step_delay =g_srd.step_delay ;
+									//��¼��һ�����е�����ٶ�
+									step_max_1=g_srd.step_delay;
+								}
+								else if( g_srd.step_decel1<step_count)                                   /* ��Ҫ��ʼ���� */
+                {
+                    g_srd.run_state = DECEL;                                             /* ״̬�ı�Ϊ���� */
+                }   
+                break; 
+						case DECEL:    //��һ�μ���
+                step_count++;
+						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+								{
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
+									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 {
+										 g_srd.step_delay =step_pass;   
+									 }
+								}												
+                /* ����Ƿ�Ϊ���һ�� */
+								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                  g_srd.run_state = ACCEL2;								
+									step_count=0;	                 								  
+                }
+                break;									
+						case ACCEL2:
+                step_count++;                               /* ������1*/						 
+								 if(0<step_count & step_count<=100) //��֤�ȶ�����
+						     {
+									 g_srd.step_delay = g_srd.step_delay;
+								 }
+						    else if(100<step_count & step_count<=g_srd.step_run) 	
+								{
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //���ټ���
+//									if(g_srd.step_delay<step_max)
+//										{
+//											g_srd.step_delay=step_max;
+//										}									
+									if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+										{
+											g_srd.step_delay=step_max_1;
+									  }
+								}								
+								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+                {
+                  g_srd.run_state = RUN2;                  /* ����Ϊ��������״̬ */
+                }
+						
+                break;								
+					 case RUN2:
+                step_count++;                                          
+               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //�ܲ���-����������-����ٲ���
+								{
+									g_srd.step_delay =g_srd.step_delay ;
+								}
+								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* ��Ҫ��ʼ���� */
+                {
+                   g_srd.run_state = DECEL2;                /* ״̬�ı�Ϊ���� */
+                }   
+                break; 
+					case DECEL2:
+                step_count++;
+						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+								{
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
+									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 {
+										 g_srd.step_delay =step_pass;   
+									 }
+								}												
+                /* ����Ƿ�Ϊ���һ�� */
+								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                  g_srd.run_state = ACCEL3;								
+									step_count=0;	                 								  
+                }
+                break;		
+					case ACCEL3:	 //�����μ���
+						 step_count++;                               /* ������1*/						 
+								 if(0<step_count & step_count<=100) //��֤�ȶ�����
+						     {
+									 g_srd.step_delay = g_srd.step_delay;
+								 }
+						    else if(100<step_count & step_count<=g_srd.step_run) 	
+								{
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //���ټ���
+//									if(g_srd.step_delay<step_max)
+//										{
+//											g_srd.step_delay=step_max;
+//										}									
+									if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+										{
+											g_srd.step_delay=step_max_1;
+									  }
+								}								
+								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+                {
+                  g_srd.run_state = RUN4;                  /* ����Ϊ��������״̬ */
+                }
+						
+                break;
+						case RUN3:
+                step_count++;                                          
+               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //�ܲ���-����������-����ٲ���
+								{
+									g_srd.step_delay =g_srd.step_delay ;
+								}
+								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* ��Ҫ��ʼ���� */
+                {
+                   g_srd.run_state = DECEL3;                /* ״̬�ı�Ϊ���� */
+                }   
+                break; 
+					case DECEL3:
+                step_count++;
+						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+								{
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
+									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 {
+										 g_srd.step_delay =step_pass;   
+									 }
+								}												
+                /* ����Ƿ�Ϊ���һ�� */
+								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                  g_srd.run_state = RUN4;								
+									step_count=0;	                 								  
+                }
+                break;									
+					case RUN4:
+               step_count++;
+					    if(step_all-pulse_compensate<step_count&step_count<step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                    g_srd.step_delay=speed_rcc;
+                }
+							else if(step_count >=step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+									  g_srd.run_state = STOP;
+                }
+							break;		
+            }
+						 i = 0;                                          /* ���㶨ʱ���жϴ�������ֵ */
+        }
+			}
+			else if(level_speed==9)     //���Ŀף��м���ٹ��ף�������������36000���壬�����������
+			{
+					 tim_count = __HAL_TIM_GET_COUNTER(&g_timx_pwm_chy_handle);
+			  tmp = tim_count + g_srd.step_delay/2;             
+       __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY,tmp);
+        i++;                                                /* ��ʱ���жϴ�������ֵ */
+        if(i == 2)                                          /* 2�Σ�˵���Ѿ����һ���������� */
+        { 				
+					  switch(g_srd.run_state)                         /* �Ӽ������߽׶� */
+            {
+							case STOP:
+                step_count = 0;                             /* ���㲽�������� */
+                /* �ر�ͨ��*/
+                HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+                g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+							//  receive_flag=0;
+							//  printf_flag=1;
+							  step_count=0;
+               // HAL_TIM_Base_Stop_IT(&TIM5_Handler);
+              //  time_out=0;							
+                break;
+            case ACCEL:     //��һ�μ��ٽ׶�                      
+                step_count++;                               					 
+								if(0<step_count & step_count<=g_srd.step_accel2) 	                     //���е�һ�μ���
+								{
+									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay;
+									 if(g_srd.step_delay<step_max)  //��������ٶ�����
+										{
+											g_srd.step_delay=step_max;
+										}
+								}
+								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)     //���еڶ��μ���
+                {
+									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay;
+									if(g_srd.step_delay<step_max)
+										{
+											g_srd.step_delay=step_max;
+										}
+                }
+								else if(g_srd.step_run<step_count)                                      /* ����Ƿ�����Ҫ���ٵĲ��� */
+                {
+                    g_srd.run_state = RUN;                                              /* ����Ϊ��������״̬ */	
+                }
+                break;
+            case RUN:
+                step_count++;  
+						    g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
+               if( g_srd.step_run<step_count & step_count<=g_srd.step_decel1)            //��������
+								{
+									g_srd.step_delay =g_srd.step_delay ;
+									//��¼��һ�����е�����ٶ�
+									step_max_1=g_srd.step_delay;
+								}
+								else if( g_srd.step_decel1<step_count)                                   /* ��Ҫ��ʼ���� */
+                {
+                    g_srd.run_state = DECEL;                                             /* ״̬�ı�Ϊ���� */
+                }   
+                break; 
+						case DECEL:
+                step_count++;
+						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+								{
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
+									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 {
+										 g_srd.step_delay =step_pass;   
+									 }
+								}												
+                /* ����Ƿ�Ϊ���һ�� */
+								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                  g_srd.run_state = ACCEL2;								
+									step_count=0;	                 								  
+                }
+                break;									
+						case ACCEL2:
+                step_count++;                               /* ������1*/						 
+								 if(0<step_count & step_count<=100) //��֤�ȶ�����
+						     {
+									 g_srd.step_delay = g_srd.step_delay;
+								 }
+						    else if(100<step_count & step_count<=g_srd.step_run) 	
+								{
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //���ټ���
+//									if(g_srd.step_delay<step_max)
+//										{
+//											g_srd.step_delay=step_max;
+//										}									
+									if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+										{
+											g_srd.step_delay=step_max_1;
+									  }
+								}								
+								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+                {
+                  g_srd.run_state = RUN2;                  /* ����Ϊ��������״̬ */
+                }
+						
+                break;								
+					 case RUN2:
+                step_count++;                                          
+               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //�ܲ���-����������-����ٲ���
+								{
+									g_srd.step_delay =g_srd.step_delay ;
+								}
+								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* ��Ҫ��ʼ���� */
+                {
+                   g_srd.run_state = DECEL2;                /* ״̬�ı�Ϊ���� */
+                }   
+                break; 
+					case DECEL2:
+               step_count++;
+						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+								{
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
+									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 {
+										 g_srd.step_delay =step_pass;   
+									 }
+								}												
+                /* ����Ƿ�Ϊ���һ�� */
+								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                  g_srd.run_state = ACCEL3;								
+									step_count=0;	                 								  
+                }
+                break;		
+					case ACCEL3:	 //�����μ���
+						 step_count++;                               /* ������1*/						 
+								 if(0<step_count & step_count<=100) //��֤�ȶ�����
+						     {
+									 g_srd.step_delay = g_srd.step_delay;
+								 }
+						    else if(100<step_count & step_count<=g_srd.step_run) 	
+								{
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //���ټ���
+//									if(g_srd.step_delay<step_max)
+//										{
+//											g_srd.step_delay=step_max;
+//										}									
+									if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+										{
+											g_srd.step_delay=step_max_1;
+									  }
+								}								
+								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+                {
+                  g_srd.run_state = RUN3;                  /* ����Ϊ��������״̬ */
+                }
+						
+                break;
+						case RUN3:
+                step_count++;                                          
+               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //�ܲ���-����������-����ٲ���
+								{
+									g_srd.step_delay =g_srd.step_delay ;
+								}
+								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* ��Ҫ��ʼ���� */
+                {
+                   g_srd.run_state = DECEL3;                /* ״̬�ı�Ϊ���� */
+                }   
+                break; 
+						case DECEL3:
+                step_count++;
+						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+								{
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
+									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 {
+										 g_srd.step_delay =step_pass;   
+									 }
+								}												
+                /* ����Ƿ�Ϊ���һ�� */
+								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                  g_srd.run_state = ACCEL4;								
+									step_count=0;	                 								  
+                }
+                break;	
+					case ACCEL4:
+						 step_count++;                               /* ������1*/						 
+								 if(0<step_count & step_count<=100) //��֤�ȶ�����
+						     {
+									 g_srd.step_delay = g_srd.step_delay;
+								 }
+						    else if(100<step_count & step_count<=g_srd.step_run) 	
+								{
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //���ټ���
+//									if(g_srd.step_delay<step_max)
+//										{
+//											g_srd.step_delay=step_max;
+//										}									
+									if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+										{
+											g_srd.step_delay=step_max_1;
+									  }
+								}								
+								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+                {
+                  g_srd.run_state = RUN5;                  /* ����Ϊ��������״̬ */
+                }
+						
+                break;
+					case RUN4:
+                step_count++;                                          
+               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //�ܲ���-����������-����ٲ���
+								{
+									g_srd.step_delay =g_srd.step_delay ;
+								}
+								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* ��Ҫ��ʼ���� */
+                {
+                   g_srd.run_state = DECEL4;                /* ״̬�ı�Ϊ���� */
+                }   
+                break; 			
+					case DECEL4:
+                step_count++;
+						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+								{
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
+									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 {
+										 g_srd.step_delay =step_pass;   
+									 }
+								}												
+                /* ����Ƿ�Ϊ���һ�� */
+								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                  g_srd.run_state = RUN5;								
+									step_count=0;	                 								  
+                }
+                break;									
+					case RUN5:
+               step_count++;
+					    if(step_all-pulse_compensate<step_count&step_count<step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                    g_srd.step_delay=speed_rcc;
+                }
+							else if(step_count >=step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+									  g_srd.run_state = STOP;
+                }
+							break;		
+            }
+						 i = 0;                                          /* ���㶨ʱ���жϴ�������ֵ */
+        }
+			}
+			else if(level_speed==10)     //�����ף��м���ٹ��ף�����������36000���壬�����������
+			{
+				 tim_count = __HAL_TIM_GET_COUNTER(&g_timx_pwm_chy_handle);
+			  tmp = tim_count + g_srd.step_delay/2;             
+       __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY,tmp);
+        i++;                                                /* ��ʱ���жϴ�������ֵ */
+        if(i == 2)                                          /* 2�Σ�˵���Ѿ����һ���������� */
+        { 				
+					  switch(g_srd.run_state)                         /* �Ӽ������߽׶� */
+            {
+							case STOP:
+                step_count = 0;                             /* ���㲽�������� */
+                /* �ر�ͨ��*/
+                HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+                g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+							//  receive_flag=0;
+							 // printf_flag=1;
+							  step_count=0;
+               // HAL_TIM_Base_Stop_IT(&TIM5_Handler);
+               // time_out=0;							
+                break;
+            case ACCEL:     //��һ�μ��ٽ׶�                      
+                step_count++;                               					 
+								if(0<step_count & step_count<=g_srd.step_accel2) 	                     //���е�һ�μ���
+								{
+									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay;
+									 if(g_srd.step_delay<step_max)  //��������ٶ�����
+										{
+											g_srd.step_delay=step_max;
+										}
+								}
+								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)     //���еڶ��μ���
+                {
+									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay;
+									if(g_srd.step_delay<step_max)
+										{
+											g_srd.step_delay=step_max;
+										}
+                }
+								else if(g_srd.step_run<step_count)                                      /* ����Ƿ�����Ҫ���ٵĲ��� */
+                {
+                    g_srd.run_state = RUN;                                              /* ����Ϊ��������״̬ */	
+                }
+                break;
+            case RUN:
+                step_count++;  
+						    g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
+               if( g_srd.step_run<step_count & step_count<=g_srd.step_decel1)            //��������
+								{
+									g_srd.step_delay =g_srd.step_delay ;
+									//��¼��һ�����е�����ٶ�
+									step_max_1=g_srd.step_delay;
+								}
+								else if( g_srd.step_decel1<step_count)                                   /* ��Ҫ��ʼ���� */
+                {
+                    g_srd.run_state = DECEL;                                             /* ״̬�ı�Ϊ���� */
+                }   
+                break; 
+						case DECEL:    //��һ�μ���
+                step_count++;
+						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+								{
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
+									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 {
+										 g_srd.step_delay =step_pass;   
+									 }
+								}												
+                /* ����Ƿ�Ϊ���һ�� */
+								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                  g_srd.run_state = ACCEL2;								
+									step_count=0;	                 								  
+                }
+                break;									
+						case ACCEL2:
+                step_count++;                               /* ������1*/						 
+								 if(0<step_count & step_count<=100) //��֤�ȶ�����
+						     {
+									 g_srd.step_delay = g_srd.step_delay;
+								 }
+						    else if(100<step_count & step_count<=g_srd.step_run) 	
+								{
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //���ټ���
+//									if(g_srd.step_delay<step_max)
+//										{
+//											g_srd.step_delay=step_max;
+//										}									
+									if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+										{
+											g_srd.step_delay=step_max_1;
+									  }
+								}								
+								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+                {
+                  g_srd.run_state = RUN2;                  /* ����Ϊ��������״̬ */
+                }
+						
+                break;								
+					 case RUN2:
+                step_count++;                                          
+               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //�ܲ���-����������-����ٲ���
+								{
+									g_srd.step_delay =g_srd.step_delay ;
+								}
+								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* ��Ҫ��ʼ���� */
+                {
+                   g_srd.run_state = DECEL2;                /* ״̬�ı�Ϊ���� */
+                }   
+                break; 
+					case DECEL2:
+                step_count++;
+						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+								{
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
+									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 {
+										 g_srd.step_delay =step_pass;   
+									 }
+								}												
+                /* ����Ƿ�Ϊ���һ�� */
+								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                  g_srd.run_state = ACCEL3;								
+									step_count=0;	                 								  
+                }
+                break;		
+					case ACCEL3:	 //�����μ���
+						 step_count++;                               /* ������1*/						 
+								 if(0<step_count & step_count<=100) //��֤�ȶ�����
+						     {
+									 g_srd.step_delay = g_srd.step_delay;
+								 }
+						    else if(100<step_count & step_count<=g_srd.step_run) 	
+								{
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //���ټ���
+//									if(g_srd.step_delay<step_max)
+//										{
+//											g_srd.step_delay=step_max;
+//										}									
+									if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+										{
+											g_srd.step_delay=step_max_1;
+									  }
+								}								
+								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+                {
+                  g_srd.run_state = RUN3;                  /* ����Ϊ��������״̬ */
+                }
+						
+                break;
+						case RUN3:
+                step_count++;                                          
+               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //�ܲ���-����������-����ٲ���
+								{
+									g_srd.step_delay =g_srd.step_delay ;
+								}
+								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* ��Ҫ��ʼ���� */
+                {
+                   g_srd.run_state = DECEL3;                /* ״̬�ı�Ϊ���� */
+                }   
+                break; 
+					case DECEL3:
+                step_count++;
+						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+								{
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
+									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 {
+										 g_srd.step_delay =step_pass;   
+									 }
+								}												
+                /* ����Ƿ�Ϊ���һ�� */
+								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                  g_srd.run_state = ACCEL4;								
+									step_count=0;	                 								  
+                }
+                break;									
+					
+						case ACCEL4:
+                step_count++;                               					 
+					        if(0<step_count & step_count<=pulse_compensate-2) 	
+								{
+									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay;
+									  if(g_srd.step_delay<speed_rcc)
+										{
+											g_srd.step_delay=speed_rcc;
+										}
+								}								
+								else if(pulse_compensate-2<step_count)
+                {
+                 g_srd.run_state = RUN4;
+									 step_count=0;
+									if(g_srd.dir == CCW )
+									{        
+                    ST1_DIR(CW);
+									}else
+									{
+										ST1_DIR(CCW);
+									}									
+                }	
+                break;													
+          case RUN4:
+						    step_count++;
+					      g_srd.step_delay =speed_rcc;
+						    if(step_count >pulse_compensate-3)
+								{
+									g_srd.run_state = STOP;
+								}					      
+						    break;		
+            }
+						 i = 0;                                          /* ���㶨ʱ���жϴ�������ֵ */
+        }
+			}
+			else if(level_speed==11)     //���Ŀף��м���ٹ��ף�����������36000���壬�����������
+			{
+					 tim_count = __HAL_TIM_GET_COUNTER(&g_timx_pwm_chy_handle);
+			  tmp = tim_count + g_srd.step_delay/2;             
+       __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle,ATIM_TIMX_PWM_CHY,tmp);
+        i++;                                                /* ��ʱ���жϴ�������ֵ */
+        if(i == 2)                                          /* 2�Σ�˵���Ѿ����һ���������� */
+        { 				
+					  switch(g_srd.run_state)                         /* �Ӽ������߽׶� */
+            {
+							case STOP:
+                step_count = 0;                             /* ���㲽�������� */
+                /* �ر�ͨ��*/
+                HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+                g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+							 // receive_flag=0;
+							 // printf_flag=1;
+							  step_count=0;
+               // HAL_TIM_Base_Stop_IT(&TIM5_Handler);
+               // time_out=0;							
+                break;
+            case ACCEL:     //��һ�μ��ٽ׶�                      
+                step_count++;                               					 
+								if(0<step_count & step_count<=g_srd.step_accel2) 	                     //���е�һ�μ���
+								{
+									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay;
+									 if(g_srd.step_delay<step_max)  //��������ٶ�����
+										{
+											g_srd.step_delay=step_max;
+										}
+								}
+								else if(g_srd.step_accel2<step_count & step_count<=g_srd.step_run)     //���еڶ��μ���
+                {
+									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay;
+									if(g_srd.step_delay<step_max)
+										{
+											g_srd.step_delay=step_max;
+										}
+                }
+								else if(g_srd.step_run<step_count)                                      /* ����Ƿ�����Ҫ���ٵĲ��� */
+                {
+                    g_srd.run_state = RUN;                                              /* ����Ϊ��������״̬ */	
+                }
+                break;
+            case RUN:
+                step_count++;  
+						    g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
+               if( g_srd.step_run<step_count & step_count<=g_srd.step_decel1)            //��������
+								{
+									g_srd.step_delay =g_srd.step_delay ;
+									//��¼��һ�����е�����ٶ�
+									step_max_1=g_srd.step_delay;
+								}
+								else if( g_srd.step_decel1<step_count)                                   /* ��Ҫ��ʼ���� */
+                {
+                    g_srd.run_state = DECEL;                                             /* ״̬�ı�Ϊ���� */
+                }   
+                break; 
+						case DECEL:
+                step_count++;
+						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+								{
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
+									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 {
+										 g_srd.step_delay =step_pass;   
+									 }
+								}												
+                /* ����Ƿ�Ϊ���һ�� */
+								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                  g_srd.run_state = ACCEL2;								
+									step_count=0;	                 								  
+                }
+                break;									
+						case ACCEL2:
+                step_count++;                               /* ������1*/						 
+								 if(0<step_count & step_count<=100) //��֤�ȶ�����
+						     {
+									 g_srd.step_delay = g_srd.step_delay;
+								 }
+						    else if(100<step_count & step_count<=g_srd.step_run) 	
+								{
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //���ټ���
+//									if(g_srd.step_delay<step_max)
+//										{
+//											g_srd.step_delay=step_max;
+//										}									
+									if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+										{
+											g_srd.step_delay=step_max_1;
+									  }
+								}								
+								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+                {
+                  g_srd.run_state = RUN2;                  /* ����Ϊ��������״̬ */
+                }
+						
+                break;								
+					 case RUN2:
+                step_count++;                                          
+               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //�ܲ���-����������-����ٲ���
+								{
+									g_srd.step_delay =g_srd.step_delay ;
+								}
+								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* ��Ҫ��ʼ���� */
+                {
+                   g_srd.run_state = DECEL2;                /* ״̬�ı�Ϊ���� */
+                }   
+                break; 
+					case DECEL2:
+               step_count++;
+						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+								{
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
+									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 {
+										 g_srd.step_delay =step_pass;   
+									 }
+								}												
+                /* ����Ƿ�Ϊ���һ�� */
+								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                  g_srd.run_state = ACCEL3;								
+									step_count=0;	                 								  
+                }
+                break;		
+					case ACCEL3:	 //�����μ���
+						 step_count++;                               /* ������1*/						 
+								 if(0<step_count & step_count<=100) //��֤�ȶ�����
+						     {
+									 g_srd.step_delay = g_srd.step_delay;
+								 }
+						    else if(100<step_count & step_count<=g_srd.step_run) 	
+								{
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //���ټ���
+//									if(g_srd.step_delay<step_max)
+//										{
+//											g_srd.step_delay=step_max;
+//										}									
+									if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+										{
+											g_srd.step_delay=step_max_1;
+									  }
+								}								
+								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+                {
+                  g_srd.run_state = RUN3;                  /* ����Ϊ��������״̬ */
+                }
+						
+                break;
+						case RUN3:
+                step_count++;                                          
+               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //�ܲ���-����������-����ٲ���
+								{
+									g_srd.step_delay =g_srd.step_delay ;
+								}
+								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* ��Ҫ��ʼ���� */
+                {
+                   g_srd.run_state = DECEL3;                /* ״̬�ı�Ϊ���� */
+                }   
+                break; 
+						case DECEL3:
+                step_count++;
+						   g_srd.step_decel1=step_all-300;  //����300�ļ��ٲ�������
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)                 /* ��Ҫ��ʼ���� */
+								{
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
+									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 {
+										 g_srd.step_delay =step_pass;   
+									 }
+								}												
+                /* ����Ƿ�Ϊ���һ�� */
+								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                  g_srd.run_state = ACCEL4;								
+									step_count=0;	                 								  
+                }
+                break;	
+					case ACCEL4:
+						 step_count++;                               /* ������1*/						 
+								 if(0<step_count & step_count<=100) //��֤�ȶ�����
+						     {
+									 g_srd.step_delay = g_srd.step_delay;
+								 }
+						    else if(100<step_count & step_count<=g_srd.step_run) 	
+								{
+									g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel1_delay; //���ټ���
+//									if(g_srd.step_delay<step_max)
+//										{
+//											g_srd.step_delay=step_max;
+//										}									
+									if(g_srd.step_delay<step_max_1)  //����ٶ����һ�α���һ��
+										{
+											g_srd.step_delay=step_max_1;
+									  }
+								}								
+								else if(g_srd.step_run<step_count)         /* ����Ƿ�����Ҫ���ٵĲ��� */
+                {
+                  g_srd.run_state = RUN4;                  /* ����Ϊ��������״̬ */
+                }
+						
+                break;
+					case RUN4:
+                step_count++;                                          
+               if( g_srd.step_run<step_count & step_count<=step_all-pulse_compensate-step_decel_2) //�ܲ���-����������-����ٲ���
+								{
+									g_srd.step_delay =g_srd.step_delay ;
+								}
+								else if( step_all-pulse_compensate-step_decel_2<step_count)         /* ��Ҫ��ʼ���� */
+                {
+                   g_srd.run_state = DECEL4;                /* ״̬�ı�Ϊ���� */
+                }   
+                break; 			
+					case DECEL4:
+                step_count++;                                         
+							if( g_srd.step_decel1<step_count & step_count<=step_all-1)         //ֱ�ӿ����
+								{
+									 g_srd.step_delay =  g_srd.step_delay+g_srd.step_decel2_delay;
+									 if( g_srd.step_delay>step_pass)  //���Ƶ��ٹ��׵��ٶ�
+									 {
+										  g_srd.step_delay =step_pass;   
+									 }
+								}												
+                /* ����Ƿ�Ϊ���һ�� */
+								else if(step_count >step_all-1)                  /* �жϼ��ٲ����Ƿ�Ӹ�ֵ�ӵ�0�ǵĻ� ������� */
+                {	
+                    g_srd.run_state = ACCEL5;
+									  step_count=0;									  
+                }
+                break;	
+					case ACCEL5:
+					step_count++;                               					 
+					        if(0<step_count & step_count<=pulse_compensate-2) 	
+								{
+									 g_srd.step_delay =  g_srd.step_delay-g_srd.step_accel2_delay;
+									  if(g_srd.step_delay<speed_rcc)
+										{
+											g_srd.step_delay=speed_rcc;
+										}
+								}								
+								else if(pulse_compensate-2<step_count)
+                {
+                 g_srd.run_state = RUN5;
+									 step_count=0;
+									if(g_srd.dir == CCW )
+									{        
+                    ST1_DIR(CW);
+									}else
+									{
+										ST1_DIR(CCW);
+									}									
+                }	
+                break;													
+          case RUN5:
+						    step_count++;
+					      g_srd.step_delay =speed_rcc;
+						    if(step_count >pulse_compensate-3)
+								{
+									g_srd.run_state = STOP;
+								}					      
+						    break;	
+            }
+						 i = 0;                                          /* ���㶨ʱ���жϴ�������ֵ */
+        }
+			}
+         __HAL_TIM_CLEAR_IT(&g_timx_pwm_chy_handle, TIM_IT_UPDATE);      /* �����ʱ������жϱ�־λ */
 		}
 	}
 
-	else if (HAL_GPIO_ReadPin(ST1_ELE_GPIO_PORT, ST1_ELE_GPIO_PIN) == 1)
+ //****************************************��С�׼��������
+extern u8 zero_flag;
+extern u8 zero_run;
+u32 time_pass=0;
+extern int time_out;
+extern TIM_HandleTypeDef TIM5_Handler;      //��ʱ����� 2
+extern u8 constant;
+extern int level_speed;	
+extern int pulse_cut;
+		
+ u8 CheckRtrig(uint16_t GPIO_Pin)  //�����ؼ��
 	{
-		printf_flag = 1;
-		run_flag = 0;
-		run_printf_flag = 0;
+    static u32 Rtrig = 0;	
+    if(HAL_GPIO_ReadPin(ST1_ZERO_GPIO_PORT,GPIO_Pin ) == 0)
+			{
+        delay_ms(20);
+        if(HAL_GPIO_ReadPin(ST1_ZERO_GPIO_PORT,GPIO_Pin ) == 1)
+					{
+            if(Rtrig == 0 )
+							{
+                Rtrig = 1;
+								return 1;
+              }else
+							{
+                Rtrig = 0;
+								return 0;
+              }
+        }else
+			  {
+           Rtrig = 0;
+					return 0;
+         }    
+     }else
+	    {
+				Rtrig = 0;
+					return 0;
+			}
+		}
+ u8 CheckPtrig(uint16_t GPIO_Pin)  //�½��ؼ��
+	{
+    static u32 Rtrig = 0;	
+    if(HAL_GPIO_ReadPin(ST1_ZERO_GPIO_PORT,GPIO_Pin ) == 1)
+			{
+        delay_ms(2);
+        if(HAL_GPIO_ReadPin(ST1_ZERO_GPIO_PORT,GPIO_Pin ) == 0)
+					{
+            if(Rtrig == 0 )
+							{
+                Rtrig = 1;
+								return 1;
+              }else
+							{
+                Rtrig = 0;
+								return 0;
+              }
+        }else
+			  {
+           Rtrig = 0;
+					return 0;
+         }    
+     }else
+	    {
+				Rtrig = 0;
+					return 0;
+			}
+		}	
+		
+	
+extern u8 run_flag;
+		
+extern __IO uint32_t g_set_speed ;          /* ����ٶ� ��λΪ0.1rad/sec */
+extern __IO uint32_t g_step_accel;            /* ���ٶ� ��λΪ0.1rad/sec^2    100*/
+extern __IO uint32_t g_step_decel;            /* ���ٶ� ��λΪ0.1rad/sec^2 */
+extern __IO uint16_t g_step_angle;             /* ���õĲ���*/
+extern  __IO uint16_t g_step1;             /* ���õĲ���1*/
+extern __IO uint16_t g_step2;             /* ���õĲ���2*/		
+
+extern u8 time_delay_pass;	
+extern int pulse_compensate;	
+extern int time_delay_compensate;	
+extern  uint8_t g_zero_flag;
+extern  uint8_t reset_flag;	
+extern u8 receive_flag;    //���Խ���ͨѶ ���н�����־
+extern u8 printf_flag; 
+
+		
+extern int32_t cycles_72;		
+	
+//ע��level=1��������8000�����壬������
+//    level=6����8000���壬����������
+//		level=7�����׶�����
+//    level=2����16000�� ����������
+//    level=5�����׶��������������Ӽ��ٺ�����ٶ�
+//    level=3����8000+����������
+//    level=4����16000+����������		
+void step_motor_motion_compensate(int num,int dir)   
+{		
+  int i=0;	
+	if (dir==1)  //��������
+	{
+	   if(num==1)
+		 {
+			  level_speed=3;
+			  create_t_ctrl_param(g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);	
+			  while(1)
+				{
+					if(g_motion_sta==0)
+					{
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+					//	printf("time_out: %d\r\n",time_out);
+						time_out=0;
+						printf_flag=1;
+						receive_flag=0;
+						//����ת������¼���洢����
+						 cycles_72=cycles_72+1;											
+						break;
+					}
+					if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+					{
+				// printf("E4\r\n");   //��ͣ
+						HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						time_out=0;
+						g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+						step_count = 0;                             /* ���㲽�������� */
+						receive_flag=0;
+						g_zero_flag=0;
+						printf_flag=0;
+						reset_flag=1;
+					}
+				}
+		 }
+		 else if(num==2)
+			{
+//				level_speed=4;
+//			  create_t_ctrl_param(g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);	
+				level_speed=6;
+			  create_t_ctrl_param(g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);
+				     while(1)
+              {
+								if(g_motion_sta==0)
+								{
+								cycles_72=cycles_72+1;	
+									break;
+								}
+								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								{
+								  //printf("E4\r\n");   //��ͣ
+									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									time_out=0;
+									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+									step_count = 0;                             /* ���㲽�������� */
+									receive_flag=0;
+									g_zero_flag=0;
+									printf_flag=0;
+									reset_flag=1;								
+									break;
+								}	
+              }
+				delay_ms(100);
+				level_speed=3;
+			  create_t_ctrl_param(g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);
+				 while(1)
+				{
+					if(g_motion_sta==0)
+					{
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+					//	printf("time_out: %d\r\n",time_out);
+						time_out=0;
+						printf_flag=1;
+						receive_flag=0;
+						cycles_72=cycles_72+1;	
+						break;
+					}
+					if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+					{
+				// printf("E4\r\n");   //��ͣ
+						HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						time_out=0;
+						g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+						step_count = 0;                             /* ���㲽�������� */
+						receive_flag=0;
+						g_zero_flag=0;
+						printf_flag=0;
+						reset_flag=1;
+					}
+				}			
+			}
+			else if(num==3)
+			{
+//				level_speed=10;
+//			  create_t_ctrl_param(g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);				
+			    level_speed=6;
+			    create_t_ctrl_param(g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);
+				     while(1)
+              {
+								if(g_motion_sta==0)
+								{
+										cycles_72=cycles_72+1;	
+									break;
+								}
+								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								{
+								// printf("E4\r\n");   //��ͣ
+									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									time_out=0;
+									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+									step_count = 0;                             /* ���㲽�������� */
+									receive_flag=0;
+									g_zero_flag=0;
+									printf_flag=0;
+									reset_flag=1;									
+									break;
+								}	
+              }
+						delay_ms(100);
+						level_speed=6;
+			      create_t_ctrl_param(g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);
+				     while(1)
+              {
+								if(g_motion_sta==0)
+								{
+										cycles_72=cycles_72+1;	
+									break;
+								}
+								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								{
+								 //printf("E4\r\n");   //��ͣ
+									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									time_out=0;
+									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+									step_count = 0;                             /* ���㲽�������� */
+									receive_flag=0;
+									g_zero_flag=0;
+									printf_flag=0;
+									reset_flag=1;										
+									break;
+								}	
+              }
+							delay_ms(100);
+				level_speed=3;
+			  create_t_ctrl_param(g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);
+				 while(1)
+				{
+					if(g_motion_sta==0)
+					{
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+					//	printf("time_out: %d\r\n",time_out);
+						time_out=0;
+						printf_flag=1;
+						receive_flag=0;
+						cycles_72=cycles_72+1;	
+						break;
+					}
+					if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+					{
+				// printf("E4\r\n");   //��ͣ
+						HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						time_out=0;
+						g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+						step_count = 0;                             /* ���㲽�������� */
+						receive_flag=0;
+						g_zero_flag=0;
+						printf_flag=0;
+						reset_flag=1;
+					}
+				}			
+			}
+			else if(num==4)
+			{
+//				level_speed=11;
+//			  create_t_ctrl_param(g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);
+						level_speed=6;
+			      create_t_ctrl_param(g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);
+				     while(1)
+              {
+								if(g_motion_sta==0)
+								{
+										cycles_72=cycles_72+1;	
+									break;
+								}
+								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								{
+								// printf("E4\r\n");   //��ͣ
+									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									time_out=0;
+									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+									step_count = 0;                             /* ���㲽�������� */
+									receive_flag=0;
+									g_zero_flag=0;
+									printf_flag=0;
+									reset_flag=1;
+								}	
+              }
+							delay_ms(100);			  			
+			   level_speed=6;
+			    create_t_ctrl_param(g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);
+				     while(1)
+              {
+								if(g_motion_sta==0)
+								{
+										cycles_72=cycles_72+1;	
+									break;
+								}
+								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								{
+								// printf("E4\r\n");   //��ͣ
+									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									time_out=0;
+									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+									step_count = 0;                             /* ���㲽�������� */
+									receive_flag=0;
+									g_zero_flag=0;
+									printf_flag=0;
+									reset_flag=1;
+								}	
+              }
+							delay_ms(100);
+						level_speed=6;
+			      create_t_ctrl_param(g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);
+				     while(1)
+              {
+								if(g_motion_sta==0)
+								{
+										cycles_72=cycles_72+1;	
+									break;
+								}
+								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								{
+								// printf("E4\r\n");   //��ͣ
+									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									time_out=0;
+									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+									step_count = 0;                             /* ���㲽�������� */
+									receive_flag=0;
+									g_zero_flag=0;
+									printf_flag=0;
+									reset_flag=1;
+								}	
+              }
+							delay_ms(100);					
+				     level_speed=3;
+			      create_t_ctrl_param(g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);
+							 while(1)
+				      {
+								if(g_motion_sta==0)
+								{
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+								//	printf("time_out: %d\r\n",time_out);
+									time_out=0;
+									printf_flag=1;
+									receive_flag=0;
+										cycles_72=cycles_72+1;	
+									break;
+								}
+								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								{
+							// printf("E4\r\n");   //��ͣ
+									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									time_out=0;
+									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+									step_count = 0;                             /* ���㲽�������� */
+									receive_flag=0;
+									g_zero_flag=0;
+									printf_flag=0;
+									reset_flag=1;
+								}
+				}
+			}
+		  run_flag=0;
+			
 	}
-}
+	else if(dir==0)  //��������
+	{		
+			run_flag=0;
+	}	
+}	
 
-void set_speed(int32_t compare)
+
+void step_motor_motion(int num,int dir)  
+{			
+	int i=0;		
+	if (dir==1)  //��������
+	{	
+		  if(num==1)
+		 {
+			level_speed=6;
+			create_t_ctrl_param(g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);
+			 while(1)
+				{
+					if(g_motion_sta==0)
+					{
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+				//		printf("time_out: %d\r\n",time_out);
+						time_out=0;
+						printf_flag=1;
+						receive_flag=0;
+							cycles_72=cycles_72+1;	
+						break;
+					}
+					if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+					{
+				// printf("E4\r\n");   //��ͣ
+						HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						time_out=0;
+						g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+						step_count = 0;                             /* ���㲽�������� */
+						receive_flag=0;
+						g_zero_flag=0;
+						printf_flag=0;
+						reset_flag=1;
+					}
+				} 
+		 }
+    else if(num==2)
+    {
+			level_speed=2;
+			create_t_ctrl_param(g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);
+			 while(1)
+				{
+					if(g_motion_sta==0)
+					{
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+				//		printf("time_out: %d\r\n",time_out);
+						time_out=0;
+						printf_flag=1;
+						receive_flag=0;
+							cycles_72=cycles_72+2;	
+						break;
+					}
+					if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+					{
+				// printf("E4\r\n");   //��ͣ
+						HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						time_out=0;
+						g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+						step_count = 0;                             /* ���㲽�������� */
+						receive_flag=0;
+						g_zero_flag=0;
+						printf_flag=0;
+						reset_flag=1;
+					}
+				}
+		}
+//		 else if(num==3)
+//    {
+//			level_speed=8;
+//			create_t_ctrl_param(g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);
+//		}
+//		 else if(num==4)
+//    {
+//			level_speed=9;
+//			create_t_ctrl_param(g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);
+//		}
+		  run_flag=0;
+	}
+	else if(dir==0)  //��������
+	{
+		if(num==1)
+		 {
+			level_speed=6;
+			create_t_ctrl_param(-g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);		
+			  while(1)
+				{
+					if(g_motion_sta==0)
+					{
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+				//		printf("time_out: %d\r\n",time_out);
+						time_out=0;
+						printf_flag=1;
+						receive_flag=0;
+							cycles_72=cycles_72+1;	
+						break;
+					}
+					if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+					{
+				// printf("E4\r\n");   //��ͣ
+						HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						time_out=0;
+						g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+						step_count = 0;                             /* ���㲽�������� */
+						receive_flag=0;
+						g_zero_flag=0;
+						printf_flag=0;
+						reset_flag=1;
+					}
+				}								
+		 }
+    else if(num==2)
+    {
+//			level_speed=2;
+//			create_t_ctrl_param(-g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);
+				level_speed=6;
+				create_t_ctrl_param(-g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);	
+		         while(1)
+              {
+								if(g_motion_sta==0)
+								{	
+										cycles_72=cycles_72+1;	
+									break;
+								}
+								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								{
+							// printf("E4\r\n");   //��ͣ
+									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									time_out=0;
+									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+									step_count = 0;                             /* ���㲽�������� */
+									receive_flag=0;
+									g_zero_flag=0;
+									printf_flag=0;
+									reset_flag=1;
+								}	
+              }
+         delay_ms(100);							
+		     level_speed=6;
+		     create_t_ctrl_param(-g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);
+					 while(1)
+				{
+					if(g_motion_sta==0)
+					{
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+			//			printf("time_out: %d\r\n",time_out);
+						time_out=0;
+						printf_flag=1;
+						receive_flag=0;
+							cycles_72=cycles_72+1;	
+						break;
+					}
+					if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+					{
+				// printf("E4\r\n");   //��ͣ
+						HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						time_out=0;
+						g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+						step_count = 0;                             /* ���㲽�������� */
+						receive_flag=0;
+						g_zero_flag=0;
+						printf_flag=0;
+						reset_flag=1;
+					}
+				}		
+		}
+		else if(num==3)
+    {
+//			level_speed=8;
+//			create_t_ctrl_param(-g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);
+					level_speed=6;
+					create_t_ctrl_param(-g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);	
+		         while(1)
+              {
+								if(g_motion_sta==0)
+								{
+										cycles_72=cycles_72+1;	
+									break;
+								}
+								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								{
+								// printf("E4\r\n");   //��ͣ
+									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									time_out=0;
+									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+									step_count = 0;                             /* ���㲽�������� */
+									receive_flag=0;
+									g_zero_flag=0;
+									printf_flag=0;
+									reset_flag=1;
+								}	
+              }	
+							delay_ms(100);
+					level_speed=6;
+					create_t_ctrl_param(-g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);	
+						while(1)
+              {
+								if(g_motion_sta==0)
+								{
+										cycles_72=cycles_72+1;	
+									break;
+								}
+								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								{
+								// printf("E4\r\n");   //��ͣ
+									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									time_out=0;
+									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+									step_count = 0;                             /* ���㲽�������� */
+									receive_flag=0;
+									g_zero_flag=0;
+									printf_flag=0;
+									reset_flag=1;
+								}	
+              }	
+							delay_ms(100);
+							level_speed=6;
+							create_t_ctrl_param(-g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);
+							 while(1)
+							{
+								if(g_motion_sta==0)
+								{
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+							//		printf("time_out: %d\r\n",time_out);
+									time_out=0;
+									printf_flag=1;
+									receive_flag=0;
+										cycles_72=cycles_72+1;	
+									break;
+								}
+								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								{
+							// printf("E4\r\n");   //��ͣ
+									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									time_out=0;
+									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+									step_count = 0;                             /* ���㲽�������� */
+									receive_flag=0;
+									g_zero_flag=0;
+									printf_flag=0;
+									reset_flag=1;
+								}
+							}
+		}
+		 else if(num==4)
+    {
+//			level_speed=9;
+//			create_t_ctrl_param(-g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);
+				level_speed=6;
+	   	   create_t_ctrl_param(-g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);	
+		         while(1)
+              {
+								if(g_motion_sta==0)
+								{
+										cycles_72=cycles_72+1;	
+									break;
+								}
+								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								{
+								// printf("E4\r\n");   //��ͣ
+									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									time_out=0;
+									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+									step_count = 0;                             /* ���㲽�������� */
+									receive_flag=0;
+									g_zero_flag=0;
+									printf_flag=0;
+									reset_flag=1;
+								}	
+              }
+       delay_ms(100);							
+		  level_speed=6;
+		  create_t_ctrl_param(-g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);	
+						while(1)
+              {
+								if(g_motion_sta==0)
+								{
+										cycles_72=cycles_72+1;	
+									break;
+								}
+								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								{
+								// printf("E4\r\n");   //��ͣ
+									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									time_out=0;
+									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+									step_count = 0;                             /* ���㲽�������� */
+									receive_flag=0;
+									g_zero_flag=0;
+									printf_flag=0;
+									reset_flag=1;
+									break;
+								}	
+              }	
+							delay_ms(100);
+						level_speed=6;
+						create_t_ctrl_param(-g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);	
+				   while(1)
+              {
+								if(g_motion_sta==0)
+								{
+										cycles_72=cycles_72+1;	
+									break;
+								}
+								if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+								{
+								// printf("E4\r\n");   //��ͣ
+									HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+									HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+									time_out=0;
+									g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+									step_count = 0;                             /* ���㲽�������� */
+									receive_flag=0;
+									g_zero_flag=0;
+									printf_flag=0;
+									reset_flag=1;
+									break;
+								}	
+              }	
+							delay_ms(100);
+		      level_speed=6;
+		      create_t_ctrl_param(-g_step_angle,g_step1,g_step_accel,g_step2,g_step_decel,g_set_speed);	
+					 while(1)
+				{
+					if(g_motion_sta==0)
+					{
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+					//	printf("time_out: %d\r\n",time_out);
+						time_out=0;
+						printf_flag=1;
+						receive_flag=0;
+							cycles_72=cycles_72+1;	
+						break;
+					}
+					if(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_7)==1)  //Ӳ��24V����IO���ɹ���ת��ģ�齫24Vת����3.3V���뵽��Ƭ��IO��
+					{
+				// printf("E4\r\n");   //��ͣ
+						HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
+						HAL_TIM_Base_Stop_IT(&TIM5_Handler);   //ֹͣ���м�ʱ
+						time_out=0;
+						g_motion_sta = 0;                           /* ���Ϊֹͣ״̬  */
+						step_count = 0;                             /* ���㲽�������� */
+						receive_flag=0;
+						g_zero_flag=0;
+						printf_flag=0;
+						reset_flag=1;
+					}
+				}		
+		}
+		 run_flag=0;
+	}	
+}	
+
+
+extern u8 run_flag;
+extern int station_x;
+void step_motor_L1(int station_y,int station_z)    //���·������
 {
-	__HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY, compare); 
+	switch (station_y)
+	{
+		/**************************����1�Ź�λ**************************/
+		case 1:   //����һ�Ź�λ										
+				if(run_flag==0)
+					 {						 
+						 run_flag=1;
+							 switch (station_z)
+						 {
+							 case 5:   //��1 
+										step_motor_motion(1,1);		
+										break;							 
+							 case 1:
+										 //��ǰ��λ������
+									run_flag=0;
+							      receive_flag=0;
+							      printf_flag=1;
+							      step_count=0;
+                    HAL_TIM_Base_Stop_IT(&TIM5_Handler);
+                    time_out=0;	
+										break;							 
+							 case 2:   //˳ 1													
+							     step_motor_motion(1,0);
+										break;							 
+							 case 3:  //˳ 2									
+							     step_motor_motion(2,0);
+										break;							 
+							 case 4:   //��ʱ����ת������λ
+										step_motor_motion(2,1);
+							 break; 
+							}					
+						}
+					 station_x=1;
+					 break;
+	/**************************����2�Ź�λ**************************/					
+			case 2:   //����2�Ź�λ					
+				if(run_flag==0)
+					 {						 
+						 run_flag=1;
+							 switch (station_z)
+						 {
+							 case 5:   //��ʱ����ת2
+										step_motor_motion(2,1);
+										break;							 
+							 case 1:  //��ʱ����ת1
+									  step_motor_motion(1,1);			
+										break;																	 
+							 case 2:   //������			
+										run_flag=0;
+							       receive_flag=0;
+							      printf_flag=1;
+							      step_count=0;
+                    HAL_TIM_Base_Stop_IT(&TIM5_Handler);
+                    time_out=0;	
+										break;						 
+							 case 3:  //˳ 1
+							      step_motor_motion(1,0);
+										break;							 
+							 case 4:   //˳ 2
+							     step_motor_motion(2,0);
+							 break; 
+							}					
+						}
+					 station_x=2;
+					 break;
+	/**************************����3�Ź�λ**************************/	
+			case 3:   //���е�3�Ź�λ										
+				if(run_flag==0)
+					 {						 
+						 run_flag=1;
+							 switch (station_z)
+						 {
+							 case 5:   //˳  2
+							      step_motor_motion(2,0);
+										break;							 
+							 case 1: //��  2
+										step_motor_motion(2,1);
+										break;							 
+							 case 2:   //��1 			
+										step_motor_motion(1,1);
+										break;							 
+							 case 3:  //��ǰ��λ������
+										run_flag=0;
+							      receive_flag=0;
+							      printf_flag=1;
+							      step_count=0;
+                    HAL_TIM_Base_Stop_IT(&TIM5_Handler);
+                    time_out=0;	
+										break;							 
+							 case 4:   //˳ʱ����ת1
+							      step_motor_motion(1,0);
+							 break; 
+							}					
+						}
+					 station_x=3;
+					 break;
+		/**************************����4�Ź�λ**************************/						
+			case 4:   //����4�Ź�λ										
+				if(run_flag==0)
+					 {						 
+						 run_flag=1;
+							 switch (station_z)
+						 {
+							 case 5:   //˳ 1
+							     step_motor_motion(1,0);
+										break;							 
+							 case 1://˳2
+							     step_motor_motion(2,0);
+										break;							 
+							 case 2:   //�� 2				
+										step_motor_motion(2,1);
+										break;							 
+							 case 3:  //�� 1
+										step_motor_motion(1,1);
+										break;							 
+							 case 4:   //������
+										run_flag=0;
+							      receive_flag=0;
+							      printf_flag=1;
+							      step_count=0;
+                    HAL_TIM_Base_Stop_IT(&TIM5_Handler);
+                    time_out=0;	
+							      break; 
+							}					
+						}
+					 station_x=4;
+					 break;
+	/**************************����5�Ź�λ**************************/							
+			case 5:   //����5�Ź�λ										
+				if(run_flag==0)
+					 {						 
+						 run_flag=1;
+							 switch (station_z)
+						 {
+							 case 5:   //������
+										run_flag=0;
+							      receive_flag=0;
+							      printf_flag=1;
+							      step_count=0;
+                    HAL_TIM_Base_Stop_IT(&TIM5_Handler);
+                    time_out=0;	
+										break;							 
+							 case 1://˳1
+							     step_motor_motion(1,0);
+										break;							 
+							 case 2:   //˳2				
+							     step_motor_motion(2,0);
+										break;							 
+							 case 3:  //�� 2 
+										step_motor_motion(2,1);
+										break;							 
+							 case 4:   //�� 1
+										step_motor_motion(1,1);
+							 break; 
+							}					
+						}
+					 station_x=5;
+					 break;
+		}
+}
+ 
+void step_motor_L2(int station_y,int station_z)   //������������    ����м�ͣ��100ms  ��˳����
+{
+	receive_flag=1;
+	switch (station_y)
+	{
+		/**************************����1�Ź�λ**************************/
+		case 1:   //����һ�Ź�λ										
+				if(run_flag==0)
+					 {						 
+						 run_flag=1;
+							 switch (station_z)
+						 {
+							 case 5:   //˳ʱ����תһ����λ
+										step_motor_motion(4,0);
+										break;							 
+							 case 1:
+										 //��ǰ��λ������
+									run_flag=0;
+							     receive_flag=0;
+							      printf_flag=1;
+							      step_count=0;
+                    HAL_TIM_Base_Stop_IT(&TIM5_Handler);
+                    time_out=0;	
+										break;							 
+							 case 2:   //˳ʱ����ת4				
+										//step_motor_motion(1,1);
+							     step_motor_motion(1,0);
+										break;							 
+							 case 3:  //˳ 3 
+										//step_motor_motion(2,1);
+							     step_motor_motion(2,0);
+										break;							 
+							 case 4:   //˳ʱ����ת������λ
+										step_motor_motion(3,0);
+							 break; 
+							}					
+						}
+					 station_x=1;
+					 break;
+	/**************************����2�Ź�λ**************************/					
+			case 2:   //����2�Ź�λ	
+       // printf("����CASE2 \r\n");				
+				if(run_flag==0)
+					 {						 
+						 run_flag=1;
+							 switch (station_z)
+						 {
+							 case 5:   //˳3
+										step_motor_motion(3,0);
+										break;							 
+							 case 1:  //��ʱ��1
+									//printf("����CASE 1 to 2 \r\n");				
+							      step_motor_motion_compensate(1,1);
+										break;																	 
+							 case 2:   //������			
+										run_flag=0;
+							      receive_flag=0;
+							      printf_flag=1;
+							      step_count=0;
+                    HAL_TIM_Base_Stop_IT(&TIM5_Handler);
+                    time_out=0;	
+										break;						 
+							 case 3:  //˳ 1
+										//step_motor_motion(1,1);
+							      step_motor_motion(1,0);
+										break;							 
+							 case 4:   //˳ 2
+										//step_motor_motion(2,1);
+							     step_motor_motion(2,0);
+							 break; 
+							}					
+						}
+					  station_x=2;
+					 break;
+	/**************************����3�Ź�λ**************************/	
+			case 3:   //���е�3�Ź�λ										
+				if(run_flag==0)
+					 {						 
+						 run_flag=1;
+							 switch (station_z)
+						 {
+							 case 5:   //˳ 2
+										//step_motor_motion(2,1);
+							      step_motor_motion(2,0);
+										break;							 
+							 case 1: //��  2
+										step_motor_motion_compensate(2,1);
+										break;							 
+							 case 2:   //�� 1				
+										step_motor_motion_compensate(1,1);
+										break;							 
+							 case 3:  //��ǰ��λ������
+										run_flag=0;
+							      receive_flag=0;
+							      printf_flag=1;
+							      step_count=0;
+                    HAL_TIM_Base_Stop_IT(&TIM5_Handler);
+                    time_out=0;	
+										break;							 
+							 case 4:   //˳1 
+										//step_motor_motion(1,1);
+							      step_motor_motion(1,0);
+							 break; 
+							}					
+						}
+					  station_x=3;
+					 break;
+		/**************************����4�Ź�λ**************************/						
+			case 4:   //����4�Ź�λ										
+				if(run_flag==0)
+					 {						 
+						 run_flag=1;
+							 switch (station_z)
+						 {
+							 case 5:   //˳1
+										//step_motor_motion(1,1);
+							     step_motor_motion(1,0);
+										break;							 
+							 case 1://��ʱ����ת3
+										// step_motor_motion(2,1);
+							     step_motor_motion_compensate(3,1);
+										break;							 
+							 case 2:   //��2			
+										step_motor_motion_compensate(2,1);
+										break;							 
+							 case 3:  //��1
+										step_motor_motion_compensate(1,1);
+										break;							 
+							 case 4:   //������
+										run_flag=0;
+							       receive_flag=0;
+							      printf_flag=1;
+							      step_count=0;
+                    HAL_TIM_Base_Stop_IT(&TIM5_Handler);
+                    time_out=0;	
+							      break; 
+							}					
+						}
+					  station_x=4;
+					 break;
+	/**************************����5�Ź�λ**************************/							
+			case 5:   //����5�Ź�λ										
+				if(run_flag==0)
+					 {						 
+						 run_flag=1;
+							 switch (station_z)
+						 {
+							 case 5:   //������
+										run_flag=0;
+							      receive_flag=0;
+							      printf_flag=1;
+							      step_count=0;
+                    HAL_TIM_Base_Stop_IT(&TIM5_Handler);
+                    time_out=0;	
+										break;							 
+							 case 1://��ʱ��1
+										//step_motor_motion(1,1);
+							     step_motor_motion_compensate(4,1);
+										break;							 
+							 case 2:   //��3				
+										//step_motor_motion(2,1);
+							    step_motor_motion_compensate(3,1);
+										break;							 
+							 case 3:  //��2
+										step_motor_motion_compensate(2,1);
+										break;							 
+							 case 4:   //��1
+										step_motor_motion_compensate(1,1);
+							 break; 
+							}					
+						}
+					  station_x=5;
+					 break;
+		}
 }
 
-/**
- * @brief       读取单个霍尔引脚（3次采样多数表决消抖）
- * @param       GPIOx: 端口基址
- * @param       GPIO_Pin: 引脚号
- * @param       weight: 权重值(1/2/4)
- * @retval      0-引脚为低, weight-引脚为高
- * @note        连续采样3次取多数, 抵抗PC13等弱驱动引脚的浮动
- */
+void motor_run_all(int loop,int station_to) 
+{
+	  int j4=0;	           
+		int  j5=1;						 
+		 for(j5=1;j5<=5;j5++)   //��λѭ��
+		 {
+			 if(station_to==j5)
+			 {
+				 //����ڵ�ǰ��λ������ִ��
+			 }else
+			 {
+			   for ( j4=0; j4<=loop;j4++)  //��λ����
+			   {							 
+				 //�Զ����Գ���
+				   step_motor_L1(j5,station_to);  //
+				 //�ȴ����н���
+					 while(1)
+					{
+						if(g_motion_sta==0)
+						{
+							break;
+						}
+					}
+				 delay_ms(500);
+				 step_motor_L1(station_to,j5);
+				//�ȴ����н���
+					 while(1)
+					{
+						if(g_motion_sta==0)
+						{
+							break;
+						}
+					}
+				 delay_ms(1000);
+			 }
+		  }
+	 }	
+}
+
+	
+
+
+/* 霍尔读取 (5次采样多数表决, 调试用) */
 static int read_single_hal(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin, int weight)
 {
     int sum = 0;
@@ -580,242 +2978,29 @@ static int read_single_hal(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin, int weight)
         sum += HAL_GPIO_ReadPin(GPIOx, GPIO_Pin);
         delay_ms(10);
     }
-    /* 5次中至少3次为高才认定为高电平 */
     return (sum >= 3) ? weight : 0;
 }
-
-/**
- * @brief       读取霍尔工位
- * @retval      1-5 有效工位, -1 错误
- * @note        霍尔信号组合: HAL1(weight=1) + HAL2(weight=2) + HAL3(weight=4)
- *              7->5映射, 其他无效值返回-1
- */
 
 int read_hal(void)
 {
     int hal = 0;
-    int retry = 0;
-
-    /* 先检测光电传感器是否触发 */
-    if (HAL_GPIO_ReadPin(ST1_ELE_GPIO_PORT, ST1_ELE_GPIO_PIN) == 1)
-    {
-        error = 1;
-        alarm = 1;
-        printf("Photo sensor not triggered \r\n");
-        alarm_pulse();
-        return -1;
-    }
-    /* 最多重试2次读取霍尔 */
-    for (retry = 0; retry < 2; retry++)
-    {
-        hal = 0;
-        hal += read_single_hal(ST1_HAL1_GPIO_PORT, ST1_HAL1_GPIO_PIN, 1);
-        hal += read_single_hal(ST1_HAL2_GPIO_PORT, ST1_HAL2_GPIO_PIN, 2);
-        hal += read_single_hal(ST1_HAL3_GPIO_PORT, ST1_HAL3_GPIO_PIN, 4);
-        /* 映射表: 实测权重 -> 工位号
-         *   权重2 (0,1,0) → 工位1
-         *   权重4 (0,0,1) → 工位2
-         *   权重3 (1,1,0) → 工位3
-         *   权重5 (1,0,1) → 工位4
-         *   权重1 (1,0,0) → 工位5
-         *   权重7 (1,1,1) → 工位5 (兼容旧项目 7→5)
-         */
-        switch (hal)
-        {
-			case 0: return 4;
-            case 2: return 1;
-            case 4: return 2;
-            case 3: return 3;
-            case 5: return 5;
-			case 1: return 5;
-            //case 7: return 5;
-        }
-        /* 无效值，延时后重试 */
-        delay_ms(50);
-    }
-    /* 重试2次仍无效 */
-    alarm = 2;
-    printf("Hall read error: %d\r\n", hal);
-    alarm_pulse();
-    return hal;
-}
-
-extern int DIR;								 
-
-int dir_jud(int target_num, int current_num) 
-{
-
-    /* 5站圆形排列，计算正转步数(递增方向) */
-    int fwd = (target_num - current_num + 5) % 5;
-    if (fwd <= 2) {
-        DIR = 0;  /* 正转步数 ≤ 2，走正转 */
-        return 0;
-    } else {
-        DIR = 1;  /* 正转步数 > 2，走反转才最短 */
-        return 1;
+    hal += read_single_hal(ST1_HAL1_GPIO_PORT, ST1_HAL1_GPIO_PIN, 1);
+    hal += read_single_hal(ST1_HAL2_GPIO_PORT, ST1_HAL2_GPIO_PIN, 2);
+    hal += read_single_hal(ST1_HAL3_GPIO_PORT, ST1_HAL3_GPIO_PIN, 4);
+    switch (hal) {
+        case 2: return 1;
+        case 4: return 2;
+        case 3: return 3;
+        case 0: return 4;
+        case 5: case 1: return 5;
+        default: return -1;
     }
 }
 
-void step_motor_LX(int target_num, int dir)
+/* 含RTC时间戳的运动完成打印 (替代原 printf_flag 分支中的简单打印) */
+void motion_done_with_ts(int st)
 {
-	int i = 0;
-	// for(i=0;i<5;i++)
-	while (1)
-	{
-		i++;
-		if (i > 5)
-		{
-			break;
-		}
-
-		if (error == 0)
-		{
-			step_motor_motion(1, dir);
-			//printf("run_printf_flag=%d\r\n", run_printf_flag);
-			while (1)
-			{
-				if (run_printf_flag == 0)
-				{
-					break;
-				}
-			}
-
-			delay_ms(50);
-			station_x = read_hal();
-			printf("Arrived station: %d\r\n", station_x);
-			if (target_num == station_x) 
-			{
-				printf("Motion complete!\r\n");
-				break;
-			}
-		}
-
-		else
-		{
-			printf("Motion failed! alarm=%d\r\n", alarm);
-			break;
-		}
-	}
-}
-
-void dcmotor_start(void)
-{
-	HAL_GPIO_WritePin(ST1_SHUTDOWN_GPIO_PORT, ST1_SHUTDOWN_GPIO_PIN, GPIO_PIN_SET); 
-}
-
-/**
- * @brief       停止电机
- * @param       无
- * @retval      无
- */
-
-void dcmotor_stop(void)
-{
-
-    /* 先设0%，再停通道，最后关闭主输出 */
-	/* Start两个通道设0%，确保引脚被主动拉低而非悬浮 */
-    HAL_TIM_PWM_Start(&g_timx_pwm_chy_handle, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&g_timx_pwm_chy_handle, TIM_CHANNEL_4);
-    __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle, TIM_CHANNEL_1, 0);
-    __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle, TIM_CHANNEL_4, 0);
-    // HAL_TIM_PWM_Stop(&g_timx_pwm_chy_handle, TIM_CHANNEL_1);
-    // HAL_TIM_PWM_Stop(&g_timx_pwm_chy_handle, TIM_CHANNEL_4);
-}
-
-/**
- * @brief       设置电机方向
- * @param       para: 方向 0=正转(PA8 CH1) 1=反转(PA11 CH4)
- */
-
-void dcmotor_dir(uint8_t para)
-{
-
-    /* 两个通道都Start确保引脚被主动驱动 */
-    HAL_TIM_PWM_Start(&g_timx_pwm_chy_handle, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&g_timx_pwm_chy_handle, TIM_CHANNEL_4);
-    __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle, TIM_CHANNEL_1, 0);
-    __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle, TIM_CHANNEL_4, 0);
-}
-
-/**
- * @brief       设置PWM占空比
- * @param       para: PWM比较值, 正转时设置正转通道,反转时设置反转通道
- * @note        正数正转,负数反转,PWM值为绝对值
- * @retval      无
- */
-
-void motor_pwm_set(int32_t para)
-{
-    if (para >= 0)
-    {
-        __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle, TIM_CHANNEL_1, para);
-        __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle, TIM_CHANNEL_4, 0);
-    }
-
-    else if (para < 0)
-    {
-        para = -para;
-        __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle, TIM_CHANNEL_1, 0);
-        __HAL_TIM_SET_COMPARE(&g_timx_pwm_chy_handle, TIM_CHANNEL_4, para);
-    }
-}
-/*************************************    编码器测速    速度计算    ****************************************************/
-ENCODE_TypeDef g_encode; 
-
-extern float speed_m;
-
-void speed_computer(int32_t encode_now, uint8_t ms)
-{
-	uint8_t i = 0, j = 0;
-	float temp = 0.0;
-	static uint8_t sp_count = 0, k = 0;
-	static float speed_arr[10] = {0.0}; 
-	if (sp_count == ms) 
-	{
-		/* 速度计算说明
-		 * 编码器: 编码器线数 * 减速比 = 每圈脉冲数
-		 * 速度: 1min内的脉冲数 = g_encode.speed * ((1000 / ms) * 60)
-		 * 单位: 脉冲数/分钟 (RPM换算需要除以编码器分辨率)
-		 * 滤波: 冒泡排序后取中间6个值做平均
-		 */
-		g_encode.encode_now = encode_now;							  
-		g_encode.speed = (g_encode.encode_now - g_encode.encode_old); 
-		speed_arr[k++] = g_encode.speed;
-		speed_m = g_encode.speed;
-		g_encode.encode_old = g_encode.encode_now; 
-		if (k == 10)
-		{
-			for (i = 10; i >= 1; i--) 
-			{
-				for (j = 0; j < (i - 1); j++)
-				{
-					if (speed_arr[j] > speed_arr[j + 1]) 
-					{
-						temp = speed_arr[j]; 
-						speed_arr[j] = speed_arr[j + 1];
-						speed_arr[j + 1] = temp;
-					}
-				}
-			}
-
-			temp = 0.0;
-			for (i = 2; i < 8; i++) 
-			{
-				temp += speed_arr[i]; 
-			}
-
-			temp = (float)(temp / 6); 
-			/* 一阶低通滤波
-			 * 公式:Y(n)= qX(n) + (1-q)Y(n-1)
-			 * 其中X(n)为本次采样值,Y(n-1)为上次滤波输出,Y(n)为本次滤波输出,q为滤波系数
-			 * q越小滤波效果越强,但响应越慢;q越大响应越快,但滤波效果越弱
-			 */
-			speed_m = (float)(((float)0.48 * temp) + (speed_m * (float)0.52));
-			k = 0;
-		}
-
-		sp_count = 0;
-	}
-
-	sp_count++;
+    char ts[32];
+    rtc_get_time_str(ts, sizeof(ts));
+    printf("[%s] P%d cycles=%d\r\n", ts, st, total_cycles);
 }
