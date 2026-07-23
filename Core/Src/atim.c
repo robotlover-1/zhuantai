@@ -48,6 +48,9 @@ void HAL_TIM_OC_MspInit(TIM_HandleTypeDef *htim) {
 /* ===== 步进电机状态机在 TIM1_CC_IRQHandler 中实现 ===== */
 /* 此中断函数放在 step_motor.c 中，通过 extern 声明相互引用 */
 
+/* ===== 系统滴答 (供 RTC 亚秒使用) ===== */
+volatile uint32_t g_tick_ms = 0;
+
 /* ===== TIM4: 磨合计时 ===== */
 u8 time_run = 0;
 TIM_HandleTypeDef TIM4_Handler;

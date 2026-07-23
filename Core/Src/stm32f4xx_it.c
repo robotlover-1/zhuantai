@@ -180,6 +180,8 @@ void SysTick_Handler(void)
 {
 
   /* USER CODE BEGIN SysTick_IRQn 0 */
+  extern volatile uint32_t g_tick_ms;
+  g_tick_ms++;
   /* USER CODE END SysTick_IRQn 0 */
   HAL_IncTick();
 
