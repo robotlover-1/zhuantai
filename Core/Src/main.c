@@ -36,7 +36,6 @@ u8 run_flag = 0;
 int32_t step_all;
 
 extern int time_out;
-u8 time_run;
 
 int station_x = 0;
 uint8_t g_zero_flag = 0;
