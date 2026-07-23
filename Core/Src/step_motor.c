@@ -3,6 +3,7 @@
 #include "rtc.h"
 #include "math.h"
 #include "delay.h"
+#include <stdio.h>
 
  STEPPER_MOTOR step = {0};  
 

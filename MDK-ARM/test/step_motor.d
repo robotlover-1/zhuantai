@@ -36,11 +36,6 @@ test\step_motor.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h
 test\step_motor.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h
 test\step_motor.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_usart.h
 test\step_motor.o: ../Core/Inc/atim.h
-test\step_motor.o: ../Core/Inc/app_util.h
+test\step_motor.o: ../Core/Inc/rtc.h
 test\step_motor.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
 test\step_motor.o: ../Core/Inc/delay.h
-test\step_motor.o: ../Core/Inc/pid.h
-test\step_motor.o: ../Core/Inc/exti.h
-test\step_motor.o: ../Core/Inc/key.h
-test\step_motor.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
-test\step_motor.o: ../Core/Inc/rtc.h

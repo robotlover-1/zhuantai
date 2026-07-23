@@ -35,7 +35,6 @@ test\cmd_handler.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h
 test\cmd_handler.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h
 test\cmd_handler.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h
 test\cmd_handler.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_usart.h
-test\cmd_handler.o: ../Core/Inc/app_util.h
 test\cmd_handler.o: ../Core/Inc/flash_param.h
 test\cmd_handler.o: ../Core/Inc/rtc.h
 test\cmd_handler.o: ../Core/Inc/step_motor.h
@@ -44,4 +43,4 @@ test\cmd_handler.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 test\cmd_handler.o: ../Core/Inc/usart2.h
 test\cmd_handler.o: ../Core/Inc/atim.h
 test\cmd_handler.o: ../Core/Inc/delay.h
-test\cmd_handler.o: ../Core/Inc/pid.h
+test\cmd_handler.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h

@@ -36,7 +36,7 @@ extern TIM_HandleTypeDef TIM4_Handler;
 extern TIM_HandleTypeDef TIM5_Handler;
 
 /* 外部变量 */
-extern u8 time_out;
+extern int time_out;
 extern u8 time_run;
 
 /* 函数声明 */

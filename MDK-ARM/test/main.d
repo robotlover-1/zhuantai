@@ -42,9 +42,6 @@ test\main.o: ../Core/Inc/usart2.h
 test\main.o: ../Core/Inc/led.h
 test\main.o: ../Core/Inc/atim.h
 test\main.o: ../Core/Inc/step_motor.h
-test\main.o: ../Core/Inc/pid.h
 test\main.o: ../Core/Inc/flash_param.h
-test\main.o: ../Core/Inc/exti.h
 test\main.o: ../Core/Inc/cmd_handler.h
 test\main.o: ../Core/Inc/rtc.h
-test\main.o: ../Core/Inc/eth.h

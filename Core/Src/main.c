@@ -82,7 +82,6 @@ int main(void)
     TIM5_Init(5000-1, 8400-1);    /* 4Hz 超时 */
     TIM4_Init(5000-1, 16800-1);   /* 2Hz 用时计时 */
 
-    MX_GPIO_Init();               /* STM32CubeMX 生成的 GPIO */
     uart_init(115200);            /* USART1 调试 */
 
     __enable_irq();
@@ -151,9 +150,9 @@ int main(void)
                 rtc_get_time_str(ts, sizeof(ts));
                 printf("[%s] P%d\r\n", ts, station_x);
 
-                HAL_GPIO_WritePin(ST1_DONE_GPIO_PORT, ST1_DONE_GPIO_PIN, 1);
+                HAL_GPIO_WritePin(ST1_DONE_GPIO_PORT, ST1_DONE_GPIO_PIN, GPIO_PIN_SET);
                 delay_ms(100);
-                HAL_GPIO_WritePin(ST1_DONE_GPIO_PORT, ST1_DONE_GPIO_PIN, 0);
+                HAL_GPIO_WritePin(ST1_DONE_GPIO_PORT, ST1_DONE_GPIO_PIN, GPIO_PIN_RESET);
 
                 total_cycles++;
                 if (total_cycles < 10000000) {
