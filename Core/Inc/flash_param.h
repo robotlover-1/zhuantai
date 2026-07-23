@@ -1,63 +1,32 @@
-﻿/**
- ****************************************************************************************************
- * @file        flash_param.h
- * @brief       F407 Flash parameter storage management
- * @note        All parameters centralized in Sector 7 (0x08060000, 128KB)
- ****************************************************************************************************
- */
 #ifndef __FLASH_PARAM_H
 #define __FLASH_PARAM_H
 
 #include "sys.h"
 
-/******************************************************************************************/
-/* Flash Sector definitions (STM32F407ZG, 1MB Flash) */
-/******************************************************************************************/
-/* Parameter storage area: Sector 7 (128KB) */
+/* Flash Sector: Sector 7 (0x08060000, 128KB) */
 #define PARAM_SECTOR                FLASH_SECTOR_7
 #define PARAM_SECTOR_BASE           0x08060000U
 
-/* Parameter offset definitions (4 bytes = 1 Word each) */
-#define PARAM_OFFSET_FORCE          0x00    /* 运行最大速度 */
-#define PARAM_OFFSET_FORCE_F        0x04    /* 最大占空比 */
-#define PARAM_OFFSET_TIME_C         0x08    /* 进孔速度 */
-#define PARAM_OFFSET_PULSE_LOW      0x0C    /* 进孔脉冲数 */
-#define PARAM_OFFSET_PLUSE_ELE      0x10    /* 光电脉冲检测限制 */
-#define PARAM_OFFSET_UPDATE         0x14    /* 参数更新标志 */
-#define PARAM_OFFSET_PID_KP         0x18    /* 位置环 KP (×1000) */
-#define PARAM_OFFSET_PID_KI         0x1C    /* 位置环 KI (×1000) */
-#define PARAM_OFFSET_PID_KD         0x20    /* 位置环 KD (×1000) */
-#define PARAM_OFFSET_PID_SKP        0x24    /* 速度环 S_KP (×100) */
-#define PARAM_OFFSET_PID_SKI        0x28    /* 速度环 S_KI (×100) */
-#define PARAM_OFFSET_PID_SKD        0x2C    /* 速度环 S_KD (×100) */
-#define PARAM_OFFSET_PID_PERIOD     0x30    /* PID采样周期(ms) */
-#define PARAM_OFFSET_PULSE_BUF      0x34    /* 缓冲段起始脉冲数 */
-#define PARAM_OFFSET_TIME_BUF       0x38    /* 缓冲段速度 */
-#define PARAM_OFFSET_CYCLE_CNT      0x3C    /* 总转动孔位计数 (耐久性验证) */
-#define PARAM_OFFSET_UNDER_CNT      0x40    /* 欠冲累计计数 */
-#define PARAM_OFFSET_OVER_CNT       0x44    /* 过冲累计计数 */
-#define PARAM_OFFSET_PASSHOLE_CNT   0x48    /* 过孔位累计计数 */
-#define PARAM_OFFSET_ETH_IP         0x4C    /* 本机IP (4 bytes packed) */
-#define PARAM_OFFSET_ETH_MASK       0x50    /* 子网掩码 (4 bytes packed) */
-#define PARAM_OFFSET_ETH_GW         0x54    /* 默认网关 (4 bytes packed) */
-#define PARAM_OFFSET_ETH_PORT       0x58    /* TCP 监听端口 */
-#define PARAM_OFFSET_FF_AMP         0x5C    /* 重力前馈: 正弦幅值 */
-#define PARAM_OFFSET_FF_PHASE       0x60    /* 重力前馈: 相位偏移 */
-#define PARAM_OFFSET_RTC_YMD        0x64    /* RTC时间备份: 年月日 packed (Y<<16|M<<8|D) */
-#define PARAM_OFFSET_RTC_HMS        0x68    /* RTC时间备份: 时分秒 packed (h<<16|m<<8|s) */
+/* F1 参数偏移 (每个4字节) */
+#define PARAM_OFFSET_SET_SPEED      0x00    /* g_set_speed */
+#define PARAM_OFFSET_STEP_ACCEL     0x04    /* g_step_accel */
+#define PARAM_OFFSET_STEP_DECEL     0x08    /* g_step_decel */
+#define PARAM_OFFSET_STEP1          0x0C    /* g_step1 */
+#define PARAM_OFFSET_STEP2          0x10    /* g_step2 */
+#define PARAM_OFFSET_STEP_PASS      0x14    /* step_pass */
+#define PARAM_OFFSET_SPEED_RCC      0x18    /* speed_rcc (原始值, 转/s) */
+#define PARAM_OFFSET_PULSE_CUT      0x1C    /* pulse_cut */
+#define PARAM_OFFSET_PULSE_COMP     0x20    /* pulse_compensate */
+#define PARAM_OFFSET_TIME_DELAY     0x24    /* time_delay_compensate */
+#define PARAM_OFFSET_LOOP1          0x28    /* loop1 */
+#define PARAM_OFFSET_LOOP2          0x2C    /* loop2 */
+#define PARAM_OFFSET_CYCLE_CNT      0x30    /* total_cycles */
+#define PARAM_OFFSET_UPDATE         0x34    /* 参数更新标志 */
+#define PARAM_OFFSET_RTC_YMD        0x38    /* RTC时间备份: 年月日 */
+#define PARAM_OFFSET_RTC_HMS        0x3C    /* RTC时间备份: 时分秒 */
 
-/* 从Flash指定偏移读取一个32位值 */
 #define PARAM_READ(offset)          (*(__IO uint32_t *)(PARAM_SECTOR_BASE + (offset)))
 
-/******************************************************************************************/
-/* External interface */
-/******************************************************************************************/
-extern u8  g_eth_ip[4];
-extern u8  g_eth_mask[4];
-extern u8  g_eth_gw[4];
-extern u16 g_eth_port;
-
-void param_load_all(void);          /* Load all parameters from Flash (with validity check) */
-
-void param_save_all(void);          /* Save all parameters to Flash in one operation */
+void param_load_all(void);
+void param_save_all(void);
 #endif
