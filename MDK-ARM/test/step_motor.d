@@ -39,3 +39,4 @@ test\step_motor.o: ../Core/Inc/atim.h
 test\step_motor.o: ../Core/Inc/rtc.h
 test\step_motor.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
 test\step_motor.o: ../Core/Inc/delay.h
+test\step_motor.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h

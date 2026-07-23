@@ -35,7 +35,7 @@ int time_delay_compensate = 100;
 u8 run_flag = 0;
 int32_t step_all;
 
-extern u8 time_out;
+extern int time_out;
 u8 time_run;
 
 int station_x = 0;

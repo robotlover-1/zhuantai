@@ -65,7 +65,7 @@ void TIM4_Init(u16 arr, u16 psc) {
 void TIM4_IRQHandler(void) { HAL_TIM_IRQHandler(&TIM4_Handler); }
 
 /* ===== TIM5: 超时/堵转检测 ===== */
-u8 time_out = 0;
+int time_out = 0;
 TIM_HandleTypeDef TIM5_Handler;
 
 void TIM5_Init(u16 arr, u16 psc) {
