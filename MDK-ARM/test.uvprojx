@@ -415,10 +415,14 @@
               <FilePath>../Core/Src/stm32f4xx_hal_msp.c</FilePath>
             </File>
             <File>
+              <FileName>eth.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Core/Src/eth.c</FilePath>
             </File>
             <File>
+              <FileName>ethernetif.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Core/Src/ethernetif.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -486,7 +490,9 @@
               <FilePath>../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal.c</FilePath>
             </File>
             <File>
+              <FileName>stm32f4xx_hal_exti.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_exti.c</FilePath>
             </File>
             <File>
               <FileName>stm32f4xx_hal_tim.c</FileName>
@@ -517,7 +523,9 @@
           <GroupName>SRC</GroupName>
           <Files>
             <File>
+              <FileName>app_util.c</FileName>
               <FileType>1</FileType>
+              <FilePath>..\Core\Src\app_util.c</FilePath>
             </File>
             <File>
               <FileName>atim.c</FileName>
@@ -530,7 +538,9 @@
               <FilePath>..\Core\Src\cmd_handler.c</FilePath>
             </File>
             <File>
+              <FileName>debug.c</FileName>
               <FileType>1</FileType>
+              <FilePath>..\Core\Src\debug.c</FilePath>
             </File>
             <File>
               <FileName>delay.c</FileName>
@@ -538,7 +548,9 @@
               <FilePath>..\Core\Src\delay.c</FilePath>
             </File>
             <File>
+              <FileName>exti.c</FileName>
               <FileType>1</FileType>
+              <FilePath>..\Core\Src\exti.c</FilePath>
             </File>
             <File>
               <FileName>flash_param.c</FileName>
@@ -556,7 +568,9 @@
               <FilePath>..\Core\Src\led.c</FilePath>
             </File>
             <File>
+              <FileName>pid.c</FileName>
               <FileType>1</FileType>
+              <FilePath>..\Core\Src\pid.c</FilePath>
             </File>
             <File>
               <FileName>step_motor.c</FileName>
@@ -569,7 +583,9 @@
               <FilePath>..\Core\Src\stmflash.c</FilePath>
             </File>
             <File>
+              <FileName>sys.c</FileName>
               <FileType>1</FileType>
+              <FilePath>..\Core\Src\sys.c</FilePath>
             </File>
             <File>
               <FileName>usart.c</FileName>
@@ -592,82 +608,134 @@
           <GroupName>Middlewares/LwIP</GroupName>
           <Files>
             <File>
+              <FileName>icmp.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/core/ipv4/icmp.c</FilePath>
             </File>
             <File>
+              <FileName>ip4.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/core/ipv4/ip4.c</FilePath>
             </File>
             <File>
+              <FileName>ip4_addr.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/core/ipv4/ip4_addr.c</FilePath>
             </File>
             <File>
+              <FileName>ip4_frag.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/core/ipv4/ip4_frag.c</FilePath>
             </File>
             <File>
+              <FileName>inet_chksum.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/core/inet_chksum.c</FilePath>
             </File>
             <File>
+              <FileName>etharp.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/core/ipv4/etharp.c</FilePath>
             </File>
             <File>
+              <FileName>tcp.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/core/tcp.c</FilePath>
             </File>
             <File>
+              <FileName>tcp_in.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/core/tcp_in.c</FilePath>
             </File>
             <File>
+              <FileName>tcp_out.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/core/tcp_out.c</FilePath>
             </File>
             <File>
+              <FileName>init.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/core/init.c</FilePath>
             </File>
             <File>
+              <FileName>def.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/core/def.c</FilePath>
             </File>
             <File>
+              <FileName>dns.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/core/dns.c</FilePath>
             </File>
             <File>
+              <FileName>mem.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/core/mem.c</FilePath>
             </File>
             <File>
+              <FileName>memp.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/core/memp.c</FilePath>
             </File>
             <File>
+              <FileName>netif.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/core/netif.c</FilePath>
             </File>
             <File>
+              <FileName>pbuf.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/core/pbuf.c</FilePath>
             </File>
             <File>
+              <FileName>stats.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/core/stats.c</FilePath>
             </File>
             <File>
+              <FileName>sys.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/core/sys.c</FilePath>
             </File>
             <File>
+              <FileName>timeouts.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/core/timeouts.c</FilePath>
             </File>
             <File>
+              <FileName>udp.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/core/udp.c</FilePath>
             </File>
             <File>
+              <FileName>api_lib.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/api/api_lib.c</FilePath>
             </File>
             <File>
+              <FileName>api_msg.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/api/api_msg.c</FilePath>
             </File>
             <File>
+              <FileName>err.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/api/err.c</FilePath>
             </File>
             <File>
+              <FileName>tcpip.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/api/tcpip.c</FilePath>
             </File>
             <File>
+              <FileName>ethernet.c</FileName>
               <FileType>1</FileType>
+              <FilePath>../Middlewares/LwIP/src/netif/ethernet.c</FilePath>
             </File>
             <File>
+              <FileName>ip.c</FileName>
               <FileType>1</FileType>
+              <FilePath>..\Middlewares\LwIP\src\core\ip.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -675,10 +743,14 @@
           <GroupName>INC</GroupName>
           <Files>
             <File>
+              <FileName>lwipopts.h</FileName>
               <FileType>5</FileType>
+              <FilePath>..\Core\Inc\lwipopts.h</FilePath>
             </File>
             <File>
+              <FileName>app_util.h</FileName>
               <FileType>5</FileType>
+              <FilePath>..\Core\Inc\app_util.h</FilePath>
             </File>
             <File>
               <FileName>atim.h</FileName>
@@ -691,7 +763,9 @@
               <FilePath>..\Core\Inc\cmd_handler.h</FilePath>
             </File>
             <File>
+              <FileName>debug.h</FileName>
               <FileType>5</FileType>
+              <FilePath>..\Core\Inc\debug.h</FilePath>
             </File>
             <File>
               <FileName>delay.h</FileName>
@@ -699,7 +773,9 @@
               <FilePath>..\Core\Inc\delay.h</FilePath>
             </File>
             <File>
+              <FileName>exti.h</FileName>
               <FileType>5</FileType>
+              <FilePath>..\Core\Inc\exti.h</FilePath>
             </File>
             <File>
               <FileName>flash_param.h</FileName>
@@ -722,7 +798,9 @@
               <FilePath>..\Core\Inc\main.h</FilePath>
             </File>
             <File>
+              <FileName>pid.h</FileName>
               <FileType>5</FileType>
+              <FilePath>..\Core\Inc\pid.h</FilePath>
             </File>
             <File>
               <FileName>step_motor.h</FileName>
