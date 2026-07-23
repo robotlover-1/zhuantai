@@ -1,0 +1,14 @@
+test\tcpip.o: ../Middlewares/LwIP/src/api/tcpip.c
+test\tcpip.o: ../Middlewares/LwIP/src/include/lwip/opt.h
+test\tcpip.o: ../Core/Inc/lwipopts.h
+test\tcpip.o: ../Middlewares/LwIP/src/include/lwip/debug.h
+test\tcpip.o: ../Middlewares/LwIP/src/include/lwip/arch.h
+test\tcpip.o: ../Core/Inc/arch/cc.h
+test\tcpip.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+test\tcpip.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+test\tcpip.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+test\tcpip.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
+test\tcpip.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\inttypes.h
+test\tcpip.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\limits.h
+test\tcpip.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\ctype.h
+test\tcpip.o: ../Middlewares/LwIP/src/include/lwip/opt.h

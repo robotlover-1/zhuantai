@@ -128,14 +128,14 @@ void step_motor_motion(int num, int dir)
 	hal_x = read_hal(); 
 	if (error == 1)
 	{
-		printf("电机初始化失败!\r\n");
+		printf("Motor init failed!\r\n");
 		return;
 	}
 
 	if (hal_x == 1 || hal_x == 2 || hal_x == 3 || hal_x == 4 || hal_x == 5)
 	{
 		char ts[32]; rtc_get_time_str(ts, sizeof(ts));
-printf("[%s] 当前位置:%d\r\n", ts, hal_x);
+printf("[%s] Current pos: %d\r\n", ts, hal_x);
 	}
 
 	if (run_printf_flag == 0 && error == 0 && run_flag == 0) 
@@ -160,7 +160,7 @@ printf("[%s] 当前位置:%d\r\n", ts, hal_x);
 							Ring = 0;
 							SetPluse = Encode_now - SetPoint_C;
 							motor_stop_normal();
-							//printf("运行完成!\r\n");
+							//printf("Motion complete!\r\n");
 							delay_ms(500);
 							if (Encode_now > SetPoint_C + 1000){
 								error = 0;
@@ -169,7 +169,7 @@ printf("[%s] 当前位置:%d\r\n", ts, hal_x);
 							{
 								error = 1;
 								alarm = 3;
-								printf("光电检测异常!\r\n");
+								printf("Photo sensor error!\r\n");
 								alarm_pulse();
 							}
 							//printf("before break\r\n");
@@ -178,27 +178,27 @@ printf("[%s] 当前位置:%d\r\n", ts, hal_x);
 					}
 					
 					/* 过孔位但光电未触发：正常停下触发回转，而非等到+5000报警 */
-					if (Encode_now > SetPoint_P + 300 && Encode_now <= SetPoint_P + 5000)
-					{
-						printf("过孔位,光电未触发,触发回转...\r\n");
-						passhole_cnt++;
-						motor_stop_normal();
-						break;  /* error=0, 下方 else 分支执行回转 */
-					}
+//					if (Encode_now > SetPoint_P + 1000 && Encode_now <= SetPoint_P + 5000)
+//					{
+//						printf("过孔位,光电未触发,触发回转...\r\n");
+//						passhole_cnt++;
+//						motor_stop_normal();
+//						break;  /* error=0, 下方 else 分支执行回转 */
+//					}
 
 					if (Encode_now > SetPoint_P + 5000)
 					{
 						motor_safe_stop();
 						error = 1;
 						alarm = 10;
-						printf("过孔超限!（已运动过孔位，光电未检测到）\r\n");
+						printf("Overtravel! (passed hole, photo not triggered)\r\n");
 						SetPluse = Encode_now - SetPoint_C;
-						printf("已运动脉冲数:%f\r\n", SetPluse);
+						printf("Pulses moved: %f\r\n", SetPluse);
 						alarm_pulse();
 						break;
 					}
 
-					if (check_motion_timeout(4, "运行超时!（电机未在时限内到达）")) break;
+					if (check_motion_timeout(4, "Motion timeout! (motor not at target)")) break;
 					if (error == 1) { motor_safe_stop(); error = 1; break; }
 					if (check_24v_loss()) break;
 				}
@@ -224,7 +224,7 @@ printf("[%s] 当前位置:%d\r\n", ts, hal_x);
 					if (Encode_now < SetPoint_P - 300)
 					{
 						char ts[32]; rtc_get_time_str(ts, sizeof(ts));
-printf("[%s] 当前位置:%d\r\n", ts, Encode_now);
+printf("[%s] Current pos: %d\r\n", ts, Encode_now);
 						undershoot_cnt++;
 						delay_ms(100);
 						SetPoint_C = Encode_now;  /* 重置起点, 用于堵转检测 */
@@ -244,7 +244,7 @@ printf("[%s] 当前位置:%d\r\n", ts, Encode_now);
 								}
 							}
 
-							if (check_motion_timeout(5, "运行超时!")) break;
+							if (check_motion_timeout(5, "Motion timeout!")) break;
 							if (error == 1) { motor_safe_stop(); error = 1; break; }
 							if (check_24v_loss()) break;
 						}
@@ -253,7 +253,7 @@ printf("[%s] 当前位置:%d\r\n", ts, Encode_now);
 					else if (Encode_now > SetPoint_P + 300)
 					{
 						char ts[32]; rtc_get_time_str(ts, sizeof(ts));
-printf("[%s] 当前位置:%d\r\n", ts, Encode_now);
+printf("[%s] Current pos: %d\r\n", ts, Encode_now);
 						overshoot_cnt++;
 						delay_ms(100);
 						SetPoint_C = Encode_now;  /* 重置起点, 用于堵转检测 */
@@ -270,7 +270,7 @@ printf("[%s] 当前位置:%d\r\n", ts, Encode_now);
 								break;
 							}
 
-							if (check_motion_timeout(6, "运行超时!")) break;
+							if (check_motion_timeout(6, "Motion timeout!")) break;
 							if (error == 1) { motor_safe_stop(); error = 1; break; }
 							if (check_24v_loss()) break;
 						}
@@ -283,7 +283,7 @@ printf("[%s] 当前位置:%d\r\n", ts, Encode_now);
 						printf_flag = 1;
 						run_flag = 0;
 						run_printf_flag = 0;
-						printf("二次到位成功!\r\n");
+						printf("2nd positioning OK!\r\n");
 						hal_y = read_hal();
 						handle_station_verify(hal_x, hal_y);
 					}
@@ -292,7 +292,7 @@ printf("[%s] 当前位置:%d\r\n", ts, Encode_now);
 					{
 						error = 1;
 						alarm = 7;
-						printf("二次到位失败!\r\n");
+						printf("2nd positioning failed!\r\n");
 						alarm_pulse();
 					}
 				}
@@ -323,7 +323,7 @@ printf("[%s] 当前位置:%d\r\n", ts, Encode_now);
 							{
 								error = 1;
 								alarm = 3;
-								printf("光电检测异常!\r\n");
+								printf("Photo sensor error!\r\n");
 								alarm_pulse();
 							}
 
@@ -332,27 +332,27 @@ printf("[%s] 当前位置:%d\r\n", ts, Encode_now);
 					}
 
 					/* 过孔位但光电未触发：正常停下触发正向调整，而非等到-5000报警 */
-					if (Encode_now < SetPoint_P - 300 && Encode_now >= SetPoint_P - 5000)
-					{
-						printf("过孔位,光电未触发,触发正向调整...\r\n");
-						passhole_cnt++;
-						motor_stop_normal();
-						break;  /* error=0, 下方 else 分支执行正向修正 */
-					}
+//					if (Encode_now < SetPoint_P - 1000 && Encode_now >= SetPoint_P - 5000)
+//					{
+//						printf("过孔位,光电未触发,触发正向调整...\r\n");
+//						passhole_cnt++;
+//						motor_stop_normal();
+//						break;  /* error=0, 下方 else 分支执行正向修正 */
+//					}
 
 					if (Encode_now < SetPoint_P - 5000)
 					{
 						motor_safe_stop();
 						error = 1;
 						alarm = 10;
-						printf("反转过孔超限!（已运动过孔位，光电未检测到）\r\n");
+						printf("Rev overtravel! (passed hole, photo not triggered)\r\n");
 						SetPluse = Encode_now - SetPoint_C;
-						printf("已运动脉冲数:%f\r\n", SetPluse);
+						printf("Pulses moved: %f\r\n", SetPluse);
 						alarm_pulse();
 						break;
 					}
 
-					if (check_motion_timeout(4, "运行超时!（电机未在时限内到达）")) break;
+					if (check_motion_timeout(4, "Motion timeout! (motor not at target)")) break;
 					if (error == 1) { motor_safe_stop(); error = 1; break; }
 					if (check_24v_loss()) break;
 				}
@@ -376,7 +376,7 @@ printf("[%s] 当前位置:%d\r\n", ts, Encode_now);
 					if (Encode_now > SetPoint_P + 300)
 					{
 						char ts[32]; rtc_get_time_str(ts, sizeof(ts));
-printf("[%s] 当前位置:%d\r\n", ts, Encode_now);
+printf("[%s] Current pos: %d\r\n", ts, Encode_now);
 						undershoot_cnt++;
 						delay_ms(100);
 						SetPoint_C = Encode_now;  /* 重置起点, 用于堵转检测 */
@@ -396,7 +396,7 @@ printf("[%s] 当前位置:%d\r\n", ts, Encode_now);
 								}
 							}
 
-							if (check_motion_timeout(5, "运行超时!")) break;
+							if (check_motion_timeout(5, "Motion timeout!")) break;
 							if (error == 1) { motor_safe_stop(); error = 1; break; }
 							if (check_24v_loss()) break;
 						}
@@ -405,7 +405,7 @@ printf("[%s] 当前位置:%d\r\n", ts, Encode_now);
 					else if (Encode_now < SetPoint_P - 300)
 					{
 						char ts[32]; rtc_get_time_str(ts, sizeof(ts));
-printf("[%s] 当前位置:%d\r\n", ts, Encode_now);
+printf("[%s] Current pos: %d\r\n", ts, Encode_now);
 						overshoot_cnt++;
 						delay_ms(100);
 						SetPoint_C = Encode_now;  /* 重置起点, 用于堵转检测 */
@@ -422,7 +422,7 @@ printf("[%s] 当前位置:%d\r\n", ts, Encode_now);
 								break;
 							}
 
-							if (check_motion_timeout(6, "运行超时!")) break;
+							if (check_motion_timeout(6, "Motion timeout!")) break;
 							if (error == 1) { motor_safe_stop(); error = 1; break; }
 							if (check_24v_loss()) break;
 						}
@@ -435,7 +435,7 @@ printf("[%s] 当前位置:%d\r\n", ts, Encode_now);
 						printf_flag = 1;
 						run_flag = 0;
 						run_printf_flag = 0;
-						printf("二次到位成功!\r\n");
+						printf("2nd positioning OK!\r\n");
 						hal_y = read_hal();
 						handle_station_verify(hal_x, hal_y);
 					}
@@ -445,7 +445,7 @@ printf("[%s] 当前位置:%d\r\n", ts, Encode_now);
 						printf_flag = 0;
 						error = 1;
 						alarm = 7;
-						printf("二次到位失败!\r\n");
+						printf("2nd positioning failed!\r\n");
 						alarm_pulse();
 					}
 				}
@@ -454,7 +454,7 @@ printf("[%s] 当前位置:%d\r\n", ts, Encode_now);
 
 		else
 		{
-			printf("光电异常,工位检测失败!\r\n");
+			printf("Photo sensor error, station detect failed!\r\n");
 			alarm_pulse();
 		} 
 	}
@@ -467,7 +467,7 @@ void motor_init(void)
 	{
 		if (error == 1)
 		{
-			printf("电机初始化中,请稍候!\r\n");
+			printf("Motor initializing, please wait!\r\n");
 			return;
 		}
 
@@ -543,7 +543,7 @@ void motor_init(void)
 						run_flag = 0;
 						run_printf_flag = 0;
 						alarm = 8;
-						printf("电机初始化失败,请检查硬件!\r\n");
+						printf("Motor init failed, check hardware!\r\n");
 						alarm_pulse();
 					}
 				}
@@ -601,7 +601,7 @@ int read_hal(void)
     {
         error = 1;
         alarm = 1;
-        printf("光电传感器未触发 \r\n");
+        printf("Photo sensor not triggered \r\n");
         alarm_pulse();
         return -1;
     }
@@ -635,7 +635,7 @@ int read_hal(void)
     }
     /* 重试2次仍无效 */
     alarm = 2;
-    printf("霍尔读取错误:%d\r\n", hal);
+    printf("Hall read error: %d\r\n", hal);
     alarm_pulse();
     return hal;
 }
@@ -682,17 +682,17 @@ void step_motor_LX(int target_num, int dir)
 
 			delay_ms(50);
 			station_x = read_hal();
-			printf("运行到工位:%d\r\n", station_x);
+			printf("Arrived station: %d\r\n", station_x);
 			if (target_num == station_x) 
 			{
-				printf("运行完成!\r\n");
+				printf("Motion complete!\r\n");
 				break;
 			}
 		}
 
 		else
 		{
-			printf("运动失败! alarm=%d\r\n", alarm);
+			printf("Motion failed! alarm=%d\r\n", alarm);
 			break;
 		}
 	}

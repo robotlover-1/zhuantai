@@ -1,8 +1,8 @@
 /**
  ****************************************************************************************************
  * @file        flash_param.c
- * @brief       F407 Flash 参数存储管理实现
- * @note        所有参数集中在 Sector 7 统一管理，避免逐一擦除互相影响
+ * @brief       F407 Flash parameter storage management
+ * @note        All parameters centralized in Sector 7, avoids erase conflicts
  ****************************************************************************************************
  */
 #include "flash_param.h"
@@ -11,7 +11,7 @@
 #include "pid.h"
 
 /******************************************************************************************/
-/* 外部变量声明 */
+/* External variable declarations */
 /******************************************************************************************/
 extern int32_t force;
 extern int32_t force_F;
@@ -36,45 +36,47 @@ extern u8  g_eth_ip[4];
 extern u8  g_eth_mask[4];
 extern u8  g_eth_gw[4];
 extern u16 g_eth_port;
+extern int gravity_ff_amp;
+extern int gravity_ff_phase;
 
 /******************************************************************************************/
-/* 公共实现 */
+/* Common implementation */
 /******************************************************************************************/
 
 /**
- * @brief       从Flash加载所有参数（含有效性校验）
- * @note        首次使用或Flash为空时会自动写入默认值
+ * @brief       Load all parameters from Flash (with validity check)
+ * @note        On first use or empty Flash, default values are written automatically
  */
 void param_load_all(void)
 {
     int32_t val;
 
-    /* force - 运行最大速度 */
+    /* force - max speed */
     val = PARAM_READ(PARAM_OFFSET_FORCE);
-    printf("从Flash读取运行最大速度: %d\r\n", val);
+    printf("Flash read - force: %d\r\n", val);
     if (val >= 0 && val <= 1500)
         force = val;
     else
         force = 1500;
-    printf("运行最大速度设置F: %d\r\n", force);
+    printf("Force(F): %d\r\n", force);
     //printf("设置F: %d\r\n", force);
-    /* force_F - 最大占空比 */
+    /* force_F - max duty */
     val = PARAM_READ(PARAM_OFFSET_FORCE_F);
-        printf("从Flash读取最大占空比: %d\r\n", val);
+        printf("Flash read - duty: %d\r\n", val);
     if (val >= 0 && val <= 3599)
         force_F = val;
     else
         force_F = 3500;
-    printf("最大占空比设置R: %d\r\n", force_F);
+    printf("Duty(R): %d\r\n", force_F);
     //printf("R: %d\r\n", force_F);
-    /* time_c - 进孔速度 */
+    /* time_c - hole entry speed */
     val = PARAM_READ(PARAM_OFFSET_TIME_C);
-    printf("从Flash读取进孔速度: %d\r\n", val);
+    printf("Flash read - hole speed: %d\r\n", val);
     if (val >= 0 && val <= 1000)
         time_c = val;
     else
         time_c = 200;
-    printf("进孔速度V: %d\r\n", time_c);
+    printf("Hole speed(V): %d\r\n", time_c);
     //printf("V: %d\r\n", time_c);
 
     /* pulse_low - 进孔脉冲数 */
@@ -84,35 +86,53 @@ void param_load_all(void)
         pulse_low = val;
     else
         pulse_low = 20000;
-    printf("进孔脉冲数S: %d\r\n", pulse_low);
+    printf("Pulse low(S): %d\r\n", pulse_low);
     //printf("S: %d\r\n", pulse_low);
 
-    /* pulse_buf - 缓冲段起始脉冲数 */
+    /* pulse_buf - buffer segment start pulse count */
     val = PARAM_READ(PARAM_OFFSET_PULSE_BUF);
-    printf("从Flash读取缓冲段脉冲数: %d\r\n", val);
+    printf("Flash read - pulse_buf: %d\r\n", val);
     if (val >= 0 && val <= 50000)
         pulse_buf = val;
     else
         pulse_buf = 30000;
-    printf("缓冲段脉冲数BS: %d\r\n", pulse_buf);
+    printf("Pulse buf(BS): %d\r\n", pulse_buf);
 
-    /* time_buf - 缓冲段速度 */
+    /* time_buf - buffer segment speed */
     val = PARAM_READ(PARAM_OFFSET_TIME_BUF);
-    printf("从Flash读取缓冲段速度: %d\r\n", val);
+    printf("Flash read - time_buf: %d\r\n", val);
     if (val >= 0 && val <= 1000)
         time_buf = (int)val;
     else
         time_buf = 300;
-    printf("缓冲段速度BV: %d\r\n", time_buf);
+    printf("Time buf(BV): %d\r\n", time_buf);
 
-    /* pluse_ele - 光电脉冲检测限制 */
+    /* gravity_ff_amp - gravity feedforward: sine amplitude */
+    val = PARAM_READ(PARAM_OFFSET_FF_AMP);
+    printf("Flash read - FF amp: %d\r\n", val);
+    if (val >= 0 && val <= 500)
+        gravity_ff_amp = (int)val;
+    else
+        gravity_ff_amp = 0;
+    printf("FF amp(FA): %d\r\n", gravity_ff_amp);
+
+    /* gravity_ff_phase - gravity feedforward: phase offset */
+    val = PARAM_READ(PARAM_OFFSET_FF_PHASE);
+    printf("Flash read - FF phase: %d\r\n", val);
+    if (val >= 0 && val <= 195999)
+        gravity_ff_phase = (int)val;
+    else
+        gravity_ff_phase = 0;
+    printf("FF phase(FP): %d\r\n", gravity_ff_phase);
+
+    /* pluse_ele - photo sensor pulse limit */
     val = PARAM_READ(PARAM_OFFSET_PLUSE_ELE);
     printf("Flash read - pluse_ele: %d\r\n", val);
     if (val >= 0 && val <= 39000)
         pluse_ele = val;
     else
-        pluse_ele = 34000;
-    printf("光电脉冲限制E: %d\r\n", pluse_ele);
+        pluse_ele = 38000;
+    printf("Pluse ele(E): %d\r\n", pluse_ele);
     //printf("E: %d\r\n", pluse_ele);
 
     /* PID 位置环 KP (×1000) */
@@ -123,9 +143,9 @@ void param_load_all(void)
         else
             g_pid_kp = KP;
     }
-    printf("位置环KP: %.3f\r\n", g_pid_kp);
+    printf("Pos KP: %.3f\r\n", g_pid_kp);
 
-    /* PID 位置环 KI (×1000) */
+    /* PID position loop KI (x1000) */
     {
         int32_t raw = PARAM_READ(PARAM_OFFSET_PID_KI);
         if (raw >= 0 && raw <= 3000)
@@ -133,9 +153,9 @@ void param_load_all(void)
         else
             g_pid_ki = KI;
     }
-    printf("位置环KI: %.3f\r\n", g_pid_ki);
+    printf("Pos KI: %.3f\r\n", g_pid_ki);
 
-    /* PID 位置环 KD (×1000) */
+    /* PID position loop KD (x1000) */
     {
         int32_t raw = PARAM_READ(PARAM_OFFSET_PID_KD);
         if (raw >= 0 && raw <= 1000)
@@ -143,9 +163,9 @@ void param_load_all(void)
         else
             g_pid_kd = KD;
     }
-    printf("位置环KD: %.3f\r\n", g_pid_kd);
+    printf("Pos KD: %.3f\r\n", g_pid_kd);
 
-    /* PID 速度环 S_KP (×1000) */
+    /* PID speed loop S_KP (x1000) */
     {
         int32_t raw = PARAM_READ(PARAM_OFFSET_PID_SKP);
         if (raw >= 0 && raw <= 50000)
@@ -153,9 +173,9 @@ void param_load_all(void)
         else
             g_pid_skp = S_KP;
     }
-    printf("速度环S_KP: %.3f\r\n", g_pid_skp);
+    printf("Spd S_KP: %.3f\r\n", g_pid_skp);
 
-    /* PID 速度环 S_KI (×1000) */
+    /* PID speed loop S_KI (x1000) */
     {
         int32_t raw = PARAM_READ(PARAM_OFFSET_PID_SKI);
         if (raw >= 0 && raw <= 50000)
@@ -163,9 +183,9 @@ void param_load_all(void)
         else
             g_pid_ski = S_KI;
     }
-    printf("速度环S_KI: %.3f\r\n", g_pid_ski);
+    printf("Spd S_KI: %.3f\r\n", g_pid_ski);
 
-    /* PID 速度环 S_KD (×1000) */
+    /* PID speed loop S_KD (x1000) */
     {
         int32_t raw = PARAM_READ(PARAM_OFFSET_PID_SKD);
         if (raw >= 0 && raw <= 50000)
@@ -173,9 +193,9 @@ void param_load_all(void)
         else
             g_pid_skd = S_KD;
     }
-    printf("速度环S_KD: %.3f\r\n", g_pid_skd);
+    printf("Spd S_KD: %.3f\r\n", g_pid_skd);
 
-    /* PID采样周期 */
+    /* PID sampling period */
     {
         int32_t raw = PARAM_READ(PARAM_OFFSET_PID_PERIOD);
         if (raw >= 5 && raw <= 100)
@@ -183,7 +203,7 @@ void param_load_all(void)
         else
             g_pid_period_ms = SMAPLSE_PID_SPEED;
     }
-    printf("PID采样周期: %dms\r\n", g_pid_period_ms);
+    printf("PID period: %dms\r\n", g_pid_period_ms);
 
     /* total_cycles - 总转动孔位计数 */
     val = PARAM_READ(PARAM_OFFSET_CYCLE_CNT);
@@ -199,15 +219,15 @@ void param_load_all(void)
         undershoot_cnt = (int)val;
     else
         undershoot_cnt = 0;
-    printf("欠冲累计: %d\r\n", undershoot_cnt);
+    printf("Undershoot: %d\r\n", undershoot_cnt);
 
-    /* overshoot_cnt - 过冲累计计数 */
+    /* overshoot_cnt */
     val = PARAM_READ(PARAM_OFFSET_OVER_CNT);
     if (val >= 0)
         overshoot_cnt = (int)val;
     else
         overshoot_cnt = 0;
-    printf("过冲累计: %d\r\n", overshoot_cnt);
+    printf("Overshoot: %d\r\n", overshoot_cnt);
 
     /* passhole_cnt - 过孔位累计计数 */
     val = PARAM_READ(PARAM_OFFSET_PASSHOLE_CNT);
@@ -217,11 +237,11 @@ void param_load_all(void)
         passhole_cnt = 0;
     printf("passhole_cnt: %d\r\n", passhole_cnt);
 
-    /* 更新标志 */
+    /* Update flag */
     writeFlashData = PARAM_READ(PARAM_OFFSET_UPDATE);
 
-    /* ---- 网络参数 ---- */
-    /* IP 地址 */
+    /* ---- Network parameters ---- */
+    /* IP address */
     {
         int32_t raw = PARAM_READ(PARAM_OFFSET_ETH_IP);
         if (raw != 0xFFFFFFFF && raw != 0) {  /* 有效值，非擦除态 */
@@ -234,7 +254,7 @@ void param_load_all(void)
     printf("IP: %d.%d.%d.%d\r\n",
            g_eth_ip[0], g_eth_ip[1], g_eth_ip[2], g_eth_ip[3]);
 
-    /* 子网掩码 */
+    /* Subnet mask */
     {
         int32_t raw = PARAM_READ(PARAM_OFFSET_ETH_MASK);
         if (raw != 0xFFFFFFFF && raw != 0) {
@@ -247,7 +267,7 @@ void param_load_all(void)
     printf("MASK: %d.%d.%d.%d\r\n",
            g_eth_mask[0], g_eth_mask[1], g_eth_mask[2], g_eth_mask[3]);
 
-    /* 网关 */
+    /* Gateway */
     {
         int32_t raw = PARAM_READ(PARAM_OFFSET_ETH_GW);
         if (raw != 0xFFFFFFFF && raw != 0) {
@@ -260,7 +280,7 @@ void param_load_all(void)
     printf("GW: %d.%d.%d.%d\r\n",
            g_eth_gw[0], g_eth_gw[1], g_eth_gw[2], g_eth_gw[3]);
 
-    /* TCP 端口 */
+    /* TCP port */
     {
         int32_t raw = PARAM_READ(PARAM_OFFSET_ETH_PORT);
         if (raw > 0 && raw <= 65535) {
@@ -271,15 +291,15 @@ void param_load_all(void)
 }
 
 /**
- * @brief       一次性保存所有参数到Flash
- * @note        仅擦除Sector 7一次，然后连续写入所有参数
- *              相比原来每存一个就擦整个扇区，大幅减少擦写次数
+ * @brief       Save all parameters to Flash in one operation
+ * @note        Erases Sector 7 once, then writes all parameters sequentially
+ *              Much fewer erase cycles than erasing per-parameter
  */
 void param_save_all(void)
 {
     uint32_t PageError = 0;
-    printf("解锁FLASH\r\n");
-    /* 解锁Flash */
+    printf("Unlock FLASH\r\n");
+    /* Unlock Flash */
     HAL_FLASH_Unlock();
 
     /* 擦除整个Sector 7 (128KB) */
@@ -290,7 +310,7 @@ void param_save_all(void)
     f.VoltageRange = FLASH_VOLTAGE_RANGE_3;
     HAL_FLASHEx_Erase(&f, &PageError);
 
-    /* 连续写入所有参数 */
+    /* Write all parameters sequentially */
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
                       PARAM_SECTOR_BASE + PARAM_OFFSET_FORCE, (uint32_t)force);
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
@@ -304,11 +324,15 @@ void param_save_all(void)
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
                       PARAM_SECTOR_BASE + PARAM_OFFSET_TIME_BUF, (uint32_t)time_buf);
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+                      PARAM_SECTOR_BASE + PARAM_OFFSET_FF_AMP, (uint32_t)gravity_ff_amp);
+    HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+                      PARAM_SECTOR_BASE + PARAM_OFFSET_FF_PHASE, (uint32_t)gravity_ff_phase);
+    HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
                       PARAM_SECTOR_BASE + PARAM_OFFSET_PLUSE_ELE, (uint32_t)pluse_ele);
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
                       PARAM_SECTOR_BASE + PARAM_OFFSET_UPDATE, 0);
 
-    /* 保存PID参数（整数化存储，避免float直接写Flash） */
+    /* Save PID params (integer storage, avoid float in Flash) */
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
                       PARAM_SECTOR_BASE + PARAM_OFFSET_PID_KP,  (uint32_t)(g_pid_kp  * 1000.0f + 0.5f));
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
@@ -332,7 +356,35 @@ void param_save_all(void)
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
                       PARAM_SECTOR_BASE + PARAM_OFFSET_PASSHOLE_CNT, (uint32_t)passhole_cnt);
 
-    /* 保存网络参数 */
+    /* Save RTC time backup (read RTC registers directly, BCD->DEC then pack) */
+    {
+        uint32_t _dr = RTC->DR;
+        uint32_t _tr = RTC->TR;
+        uint32_t _ymd, _hms;
+        int _y, _mon, _d, _h, _min, _s;
+        /* Inline BCD to decimal: high nibble*10 + low nibble */
+#define B2D(b) ((((b) >> 4) * 10) + ((b) & 0x0F))
+        _y   = 2000 + B2D((_dr >> 16) & 0xFF);
+        _mon = B2D((_dr >> 8) & 0x1F);
+        _d   = B2D(_dr & 0x3F);
+        _h   = B2D((_tr >> 16) & 0x3F);
+        _min = B2D((_tr >> 8) & 0x7F);
+        _s   = B2D(_tr & 0x7F);
+#undef B2D
+        /* Basic validation: skip invalid values (RTC may not be initialized) */
+        if (_y >= 2025 && _y <= 2099 && _mon >= 1 && _mon <= 12
+            && _d >= 1 && _d <= 31 && _h <= 23 && _min <= 59 && _s <= 59)
+        {
+            _ymd = ((uint32_t)_y << 16) | ((uint32_t)_mon << 8) | (uint32_t)_d;
+            _hms = ((uint32_t)_h << 16) | ((uint32_t)_min << 8) | (uint32_t)_s;
+            HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+                              PARAM_SECTOR_BASE + PARAM_OFFSET_RTC_YMD, _ymd);
+            HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+                              PARAM_SECTOR_BASE + PARAM_OFFSET_RTC_HMS, _hms);
+        }
+    }
+
+    /* Save network parameters */
     {
         uint32_t ip_packed = ((uint32_t)g_eth_ip[3] << 24) |
                              ((uint32_t)g_eth_ip[2] << 16) |
@@ -360,5 +412,5 @@ void param_save_all(void)
     /* 锁定Flash */
     HAL_FLASH_Lock();
 
-    printf("所有参数已保存到Flash\r\n");
+    printf("All params saved to Flash\r\n");
 }

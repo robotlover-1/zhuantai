@@ -71,23 +71,11 @@ extern int pulse_add;
 int32_t increment_pid_speed(float Feedback_value)
 {
     Error_S = (float)(SetPoint_S - Feedback_value);                   /* 计算偏差 */
-
-    /* 条件积分抗饱和: 仅超速时(|spd|>|SpdS|)衰减积分, 加速/欠速时满积分 */
-    float i_scale = 1.0f;
-    float abs_spds = (SetPoint_S > 0.0f) ? SetPoint_S : -SetPoint_S;
-    if (abs_spds > 0.5f)   /* SpdS有效(非零), 才做条件积分 */
-    {
-        float abs_spd  = (Feedback_value > 0.0f) ? Feedback_value : -Feedback_value;
-        float ratio = abs_spd / abs_spds;
-        if (ratio > 1.3f)
-            i_scale = 0.3f;
-        else if (ratio > 1.0f)
-            i_scale = 0.3f + 0.7f * (1.3f - ratio) / 0.3f;          /* 1.0→1.3 线性过渡 */
-    }
-
     ActualValue_S += (Proportion_S * (Error_S - LastError_S))                          /* 比例环节 */
-                        + (i_scale * Integral_S * Error_S)                                        /* 积分环节(条件积分) */
+                        + (Integral_S * Error_S)                                             /* 积分环节 */
                         + (Derivative_S * (Error_S - 2 *LastError_S + PrevError_S));  /* 微分环节 */
+    // if (ActualValue_S >  3000.0f) ActualValue_S =  3000.0f;          /* 防积分饱和 */
+    // if (ActualValue_S < -3000.0f) ActualValue_S = -3000.0f;
     PrevError_S = LastError_S;                                        /* 存储偏差，用于下次计算 */
     LastError_S = Error_S;
     return ((int32_t)(ActualValue_S ));
@@ -117,6 +105,7 @@ int32_t position_pid_speed(float Feedback_value)
     ActualValue_P = (Proportion_P * Error_P)                       /* 比例环节 */
                        + (Integral_P * SumError_P )                    /* 积分环节 */
                        + (Derivative_P * (Error_P - 2 *LastError_P + PrevError_P));  /* 微分环节 */
+    //PrevError_P = LastError_P;
     LastError_P = Error_P;
-    return ((int32_t)(ActualValue_P )); 
+    return ((int32_t)(ActualValue_P ));
 }

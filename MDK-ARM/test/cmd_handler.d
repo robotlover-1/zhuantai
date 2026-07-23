@@ -37,6 +37,7 @@ test\cmd_handler.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h
 test\cmd_handler.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_usart.h
 test\cmd_handler.o: ../Core/Inc/app_util.h
 test\cmd_handler.o: ../Core/Inc/flash_param.h
+test\cmd_handler.o: ../Core/Inc/rtc.h
 test\cmd_handler.o: ../Core/Inc/step_motor.h
 test\cmd_handler.o: ../Core/Inc/usart.h
 test\cmd_handler.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h

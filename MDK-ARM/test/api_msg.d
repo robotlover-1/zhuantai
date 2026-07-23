@@ -1,0 +1,14 @@
+test\api_msg.o: ../Middlewares/LwIP/src/api/api_msg.c
+test\api_msg.o: ../Middlewares/LwIP/src/include/lwip/opt.h
+test\api_msg.o: ../Core/Inc/lwipopts.h
+test\api_msg.o: ../Middlewares/LwIP/src/include/lwip/debug.h
+test\api_msg.o: ../Middlewares/LwIP/src/include/lwip/arch.h
+test\api_msg.o: ../Core/Inc/arch/cc.h
+test\api_msg.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+test\api_msg.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+test\api_msg.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+test\api_msg.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
+test\api_msg.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\inttypes.h
+test\api_msg.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\limits.h
+test\api_msg.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\ctype.h
+test\api_msg.o: ../Middlewares/LwIP/src/include/lwip/opt.h

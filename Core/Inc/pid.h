@@ -9,14 +9,14 @@
 #if INCR_LOCT_SELECT
 
 /* PID相关参数 */
-#define  KP      0.03f               /* P参数*/  
-#define  KI      0.005f               /* I参数*/
+#define  KP      0.02f               /* P参数*/  
+#define  KI      0.00f               /* I参数*/
 #define  KD      0.00f               /* D参数*/
-#define  SMAPLSE_PID_SPEED  20       /* 采样周期 单位ms*/
+#define  SMAPLSE_PID_SPEED  25       /* 采样周期 单位ms*/
 
 /* PID相关参数 */
-#define  S_KP      3.0f             /* P参数 */  
-#define  S_KI      0.3f            /* I参数 */
+#define  S_KP      0.8f             /* P参数 */  
+#define  S_KI      1.5f            /* I参数 */
 #define  S_KD      0.00f             /* D参数 */
 #else
 

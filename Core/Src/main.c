@@ -59,7 +59,9 @@ int Ding = 0;
 int pulse_add;
 int32_t force = 1000;
 int32_t force_F = 2500;
-int time_c = 100;
+int time_c = 200;
+int gravity_ff_amp   = 0;   /* 重力前馈: 正弦补偿幅值 (PWM) */
+int gravity_ff_phase = 0;   /* 重力前馈: 相位偏移 (编码器脉冲, 0~195999) */
 int duzhuan_flag;
 int alarm = 0;
 int undershoot_cnt = 0;  /* 欠冲计数 */
@@ -93,7 +95,7 @@ int32_t motor_pwm;      /* 电机PWM值 */
 int32_t pulse_low = 14000;  // 进孔脉冲数 (慢速段起始)
 int32_t pulse_buf = 30000;  // 缓冲段起始脉冲数 (三段式: 全速→缓冲→慢速)
 int time_buf = 500;         // 缓冲段入口速度 (S曲线起点, 推荐 force的50%~70%)
-int32_t pulse_out = 39000;  // 出孔脉冲数
+int32_t pulse_out = 39200;  // 出孔脉冲数
 int32_t pluse_ele = 34000;  // 光电检测脉冲限制  
 int loop1 = 0;
 int loop2 = 0;

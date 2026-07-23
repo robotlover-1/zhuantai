@@ -358,6 +358,7 @@ void handle_station_verify(int hal_start, int hal_end)
     {
         alarm = 9;
         printf("工位验证失败!\r\n");
+        error = 1;
         alarm_pulse();
     }
     return;

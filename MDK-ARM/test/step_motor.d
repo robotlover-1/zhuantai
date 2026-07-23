@@ -43,3 +43,4 @@ test\step_motor.o: ../Core/Inc/pid.h
 test\step_motor.o: ../Core/Inc/exti.h
 test\step_motor.o: ../Core/Inc/key.h
 test\step_motor.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+test\step_motor.o: ../Core/Inc/rtc.h

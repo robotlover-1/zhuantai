@@ -10,6 +10,7 @@
 #include "sys.h"
 
 /* 命令处理函数 - 参数设置类 */
+void cmd_set_time(u8 *buf, int len);     /* TIME: 设置RTC时间, 格式: TIME:2026-07-11 14:30:00 */
 void cmd_set_loop1(u8 *buf, int len);    /* T: 大循环次数设置 */
 
 void cmd_set_loop2(u8 *buf, int len);    /* H: 速度设置 */
@@ -32,9 +33,9 @@ void cmd_set_pluse_ele(u8 *buf, int len);/* E: 光电检测限制脉冲数 */
 void cmd_set_kp(u8 *buf, int len);       /* KP: 位置环P增益 (×1000) */
 void cmd_set_ki(u8 *buf, int len);       /* KI: 位置环I增益 (×1000) */
 void cmd_set_kd(u8 *buf, int len);       /* KD: 位置环D增益 (×1000) */
-void cmd_set_skp(u8 *buf, int len);      /* SK: 速度环P增益 (×100) */
-void cmd_set_ski(u8 *buf, int len);      /* SI: 速度环I增益 (×100) */
-void cmd_set_skd(u8 *buf, int len);      /* SD: 速度环D增益 (×100) */
+void cmd_set_skp(u8 *buf, int len);      /* SK: 速度环P增益 (×1000) */
+void cmd_set_ski(u8 *buf, int len);      /* SI: 速度环I增益 (×1000) */
+void cmd_set_skd(u8 *buf, int len);      /* SD: 速度环D增益 (×1000) */
 void cmd_set_pc(u8 *buf, int len);       /* PC: PID采样周期(ms) */
 
 /* 命令处理函数 - 控制类 */

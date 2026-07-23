@@ -34,6 +34,8 @@ extern int Ding;
 extern int32_t force;
 extern int32_t force_F;
 extern int time_c;
+extern int gravity_ff_amp;
+extern int gravity_ff_phase;
 extern int32_t pulse_low;
 extern int32_t pulse_buf;
 extern int time_buf;
@@ -70,6 +72,29 @@ extern u16 g_eth_port;
 /******************************************************************************************/
 /* 参数设置类命令*/
 /******************************************************************************************/
+void cmd_set_time(u8 *buf, int len) /* TIME: 设置RTC时间, 格式: TIME:2026-07-11 14:30:00 */
+{
+    int y = 2026, mon = 1, d = 1, h = 0, min = 0, sec = 0;
+    sscanf((char *)buf, "TIME:%d-%d-%d %d:%d:%d", &y, &mon, &d, &h, &min, &sec);
+    if (y < 2025 || y > 2099) y = 2026;
+    if (mon < 1 || mon > 12) mon = 1;
+    if (d < 1 || d > 31) d = 1;
+    if (h < 0 || h > 23) h = 0;
+    if (min < 0 || min > 59) min = 0;
+    if (sec < 0 || sec > 59) sec = 0;
+
+    rtc_set_time(y, mon, d, h, min, sec);
+
+    /* 保存所有参数到Flash (包含RTC时间备份) */
+    param_save_all();
+
+    {
+        char ts[32];
+        rtc_get_time_str(ts, sizeof(ts));
+        printf("RTC时间已设置: %s\r\n", ts);
+    }
+}
+
 void cmd_set_loop1(u8 *buf, int len) /* T: 大循环次数设置*/
 {
 
@@ -133,6 +158,28 @@ void cmd_set_speed_buf(u8 *buf, int len) /* BV: 缓冲段速度 */
     if (raw > 1000) raw = 1000;
     time_buf = raw;
     printf("缓冲段速度:%d (进孔速度=%d, 最大速度=%d)\r\n", time_buf, time_c, force);
+    param_save_all();
+}
+
+void cmd_set_ff_amp(u8 *buf, int len) /* FA: 重力前馈正弦幅值 */
+{
+    int raw = 0;
+    sscanf((char *)buf, "FA:%d", &raw);
+    if (raw < 0) raw = 0;
+    if (raw > 500) raw = 500;
+    gravity_ff_amp = raw;
+    printf("重力前馈幅值:%d (正弦波峰值PWM, 0=关闭)\r\n", gravity_ff_amp);
+    param_save_all();
+}
+
+void cmd_set_ff_phase(u8 *buf, int len) /* FP: 重力前馈相位偏移 */
+{
+    int raw = 0;
+    sscanf((char *)buf, "FP:%d", &raw);
+    if (raw < 0) raw = 0;
+    if (raw > 195999) raw = 195999;
+    gravity_ff_phase = raw;
+    printf("重力前馈相位:%d (编码器脉冲, 0~195999, 对准'最陡上坡'孔位记enc)\r\n", gravity_ff_phase);
     param_save_all();
 }
 
@@ -251,6 +298,7 @@ void cmd_photo_test(void) /* OP: 拍照测试 */
 void cmd_clc(void) /* CLC: 报警清除 */
 {
     error = 0;
+    alarm = 0;
 }
 
 void cmd_motor_init(void) /* D0: 电机初始化*/
@@ -367,6 +415,118 @@ void cmd_test_4(void) { cmd_station_roundtrip(4); }
 
 void cmd_test_5(void) { cmd_station_roundtrip(5); }
 
+void cmd_auto_fp(void) /* AUTOFP: 自动标定重力前馈FP */
+{
+    extern TIM_HandleTypeDef g_timx_pwm_chy_handle;
+    extern int32_t Encode_now;
+    extern int gravity_ff_amp;
+    extern int gravity_ff_phase;
+    int i, best_station = 0;
+    int32_t best_enc = 0, min_delta = 0x7FFFFFFF;
+    int32_t start_enc[6] = {0}, delta[6] = {0};  /* 1-indexed */
+
+    printf("=== AUTOFP 自动标定重力前馈相位 ===\r\n");
+
+    /* 保存当前位置 */
+    int save_station = read_hal();
+    if (save_station < 1 || save_station > 5) {
+        printf("错误: 无法读取当前孔位 (HAL=%d)\r\n", save_station);
+        return;
+    }
+    printf("当前位置: 孔位%d, 即将遍历5个孔位...\r\n", save_station);
+
+    /* 遍历5个孔位 */
+    for (i = 1; i <= 5; i++) {
+        int cur = read_hal();
+        if (cur != i) {
+            printf("→ 移动到孔位%d...\r\n", i);
+            int d = dir_jud(i, cur);
+            error = 0; run_flag = 0; run_printf_flag = 0;
+            step_motor_LX(i, d);
+            wait_motion_done();
+            if (error) {
+                printf("孔位%d移动失败, 跳过\r\n", i);
+                continue;
+            }
+        }
+
+        delay_ms(300);  /* 等电机稳定 */
+
+        /* DC脉冲测试: PWM=2000, 200ms; 然后反向脉冲退回原位避免丢位置 */
+        start_enc[i] = (int32_t)Encode_now;
+
+        run_flag = 0;  /* 确保PID不干扰 */
+        HAL_TIM_PWM_Start(&g_timx_pwm_chy_handle, TIM_CHANNEL_1);
+        HAL_TIM_PWM_Start(&g_timx_pwm_chy_handle, TIM_CHANNEL_4);
+        dcmotor_start();
+
+        /* 正向脉冲, 测量Δenc */
+        motor_pwm_set(2000);
+        delay_ms(200);
+        motor_pwm_set(0);
+
+        int32_t end_enc = (int32_t)Encode_now;
+        delta[i] = end_enc - start_enc[i];
+        if (delta[i] < 0) delta[i] = -delta[i];
+
+        printf("孔位%d: enc=%d → %d, Δ=%d (前向)\r\n",
+               i, (int)start_enc[i], (int)end_enc, (int)delta[i]);
+
+        /* 反向脉冲退回去 (同样200ms, 避免偏离孔位) */
+        motor_pwm_set(-2000);
+        delay_ms(200);
+        motor_pwm_set(0);
+        dcmotor_stop();
+
+        if (delta[i] < min_delta) {
+            min_delta = delta[i];
+            best_station = i;
+            best_enc = start_enc[i];
+        }
+    }
+
+    if (best_station == 0) {
+        printf("错误: 无有效数据, 标定失败\r\n");
+        return;
+    }
+
+    /* 计算FP */
+    {
+        int32_t enc_mod = best_enc % 196000;
+        if (enc_mod < 0) enc_mod += 196000;
+        gravity_ff_phase = enc_mod;
+    }
+
+    /* 如果幅值未设, 给默认值 */
+    if (gravity_ff_amp == 0) {
+        gravity_ff_amp = 80;
+        printf("FA未设置, 自动设为: 80\r\n");
+    }
+
+    printf("--- 标定结果 ---\r\n");
+    printf("最陡上坡孔位: %d, enc=%d, enc%%196000=%d\r\n",
+           best_station, (int)best_enc, gravity_ff_phase);
+    printf("各孔位Δenc: ");
+    for (i = 1; i <= 5; i++) printf("%d:%d  ", i, (int)delta[i]);
+    printf("\r\n");
+    printf("FP: %d, FA: %d\r\n", gravity_ff_phase, gravity_ff_amp);
+
+    param_save_all();
+
+    /* 回到原位 */
+    {
+        int cur = read_hal();
+        if (cur != save_station) {
+            printf("← 回到孔位%d...\r\n", save_station);
+            int d = dir_jud(save_station, cur);
+            error = 0; run_flag = 0; run_printf_flag = 0;
+            step_motor_LX(save_station, d);
+            wait_motion_done();
+        }
+    }
+    printf("=== AUTOFP 完成 ===\r\n");
+}
+
 /**************************************************************/
 void cmd_tim3(void) /* TIM3: 保留旧命令, 实际调T4 */
 {
@@ -391,6 +551,40 @@ void cmd_rts(void) /* RTS: 恢复初始位置 */
     motor_pwm = 0;
     motor_pwm_set(motor_pwm);
     run_flag = 0;
+}
+
+void cmd_dc_motor(u8 *buf, int len) /* DC:<pwm>,<dur_ms> 直接PWM输出(标定用) */
+{
+    extern TIM_HandleTypeDef g_timx_pwm_chy_handle;
+    extern int32_t Encode_now;
+    int pwm_val = 0, dur_ms = 0;
+
+    sscanf((char *)buf, "DC:%d,%d", &pwm_val, &dur_ms);
+
+    /* 安全检查 */
+    if (dur_ms < 0)  dur_ms = 0;
+    if (dur_ms > 10000) dur_ms = 10000;   /* 最长10秒 */
+    if (pwm_val >  3500) pwm_val =  3500;
+    if (pwm_val < -3500) pwm_val = -3500;
+
+    printf("DC: PWM=%d, %dms, %s, 当前enc=%d\r\n",
+           pwm_val >= 0 ? pwm_val : -pwm_val, dur_ms,
+           pwm_val >= 0 ? "正转" : "反转", (int)Encode_now);
+
+    if (dur_ms == 0) dur_ms = 100;  /* 默认100ms */
+
+    /* 强制停止PID闭环，直接输出PWM */
+    run_flag = 0;
+    HAL_TIM_PWM_Start(&g_timx_pwm_chy_handle, TIM_CHANNEL_1);
+    HAL_TIM_PWM_Start(&g_timx_pwm_chy_handle, TIM_CHANNEL_4);
+    dcmotor_start();
+    motor_pwm_set((int32_t)pwm_val);
+
+    delay_ms(dur_ms);
+
+    motor_pwm_set(0);
+    dcmotor_stop();
+    printf("DC: 完成, 结束enc=%d\r\n", (int)Encode_now);
 }
 
 void cmd_res(void) /* RES: 串口更新程序 */
@@ -424,6 +618,8 @@ void cmd_show_params(void) /* PARA: 显示所有参数 */
     printf("PC(采样周期): %dms\r\n", g_pid_period_ms);
     printf("KP(位置环P): %.3f  KI: %.3f  KD: %.3f\r\n", g_pid_kp, g_pid_ki, g_pid_kd);
     printf("SK(速度环P): %.3f  SI: %.3f  SD: %.3f\r\n", g_pid_skp, g_pid_ski, g_pid_skd);
+    printf("--- 重力前馈 ---\r\n");
+    printf("FA(正弦幅值): %d  FP(相位偏移): %d\r\n", gravity_ff_amp, gravity_ff_phase);
     printf("--- 网络配置 ---\r\n");
     printf("IP: %d.%d.%d.%d\r\n",
            g_eth_ip[0], g_eth_ip[1], g_eth_ip[2], g_eth_ip[3]);
@@ -667,7 +863,7 @@ void cmd_dbg_start(void) /* DBG: 采集一次正向运动的编码器数据 */
         DIR = 0;
         motor_start_motion();
         SetPoint_C = Encode_now;
-        SetPoint_P = Encode_now + 39200;
+        SetPoint_P = Encode_now + 43000;
         run_flag = 1;
         dbg_cnt = 0;
         while (1)
@@ -800,6 +996,12 @@ int cmd_dispatch(u8 *buf, int len)
 {
 
     /* 参数设置类(X:num格式) */
+    if (buf[0] == 'T' && buf[1] == 'I' && buf[2] == 'M' && buf[3] == 'E' && buf[4] == ':')
+    {
+        cmd_set_time(buf, len);
+        return 1;
+    }
+
     if (buf[0] == 'T' && buf[1] == ':')       /* T: 大循环次数*/
     {
         //printf("T:%.*s\r\n", len, buf);
@@ -825,6 +1027,12 @@ int cmd_dispatch(u8 *buf, int len)
     {
         //printf("R:%.*s\r\n", len, buf);
         cmd_set_duty(buf, len);
+        return 1;
+    }
+
+    if (buf[0] == 'D' && buf[1] == 'C' && buf[2] == ':')   /* DC:<pwm>,<ms> 直接PWM输出 */
+    {
+        cmd_dc_motor(buf, len);
         return 1;
     }
 
@@ -888,6 +1096,18 @@ int cmd_dispatch(u8 *buf, int len)
     if (buf[0] == 'B' && buf[1] == 'V' && buf[2] == ':')    /* BV: 缓冲段速度 */
     {
         cmd_set_speed_buf(buf, len);
+        return 1;
+    }
+
+    if (buf[0] == 'F' && buf[1] == 'A' && buf[2] == ':')    /* FA: 重力前馈正弦幅值 */
+    {
+        cmd_set_ff_amp(buf, len);
+        return 1;
+    }
+
+    if (buf[0] == 'F' && buf[1] == 'P' && buf[2] == ':')    /* FP: 重力前馈相位偏移 */
+    {
+        cmd_set_ff_phase(buf, len);
         return 1;
     }
 
@@ -1027,6 +1247,12 @@ int cmd_dispatch(u8 *buf, int len)
     if (buf[0] == 'T' && buf[1] == '5')
     {
         cmd_test_5();
+        return 1;
+    }
+
+    if (buf[0] == 'A' && buf[1] == 'U' && buf[2] == 'T' && buf[3] == 'O' && buf[4] == 'F' && buf[5] == 'P')
+    {
+        cmd_auto_fp();
         return 1;
     }
 

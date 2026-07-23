@@ -1,8 +1,8 @@
 ﻿/**
  ****************************************************************************************************
  * @file        flash_param.h
- * @brief       F407 Flash 参数存储管理
- * @note        所有参数集中在 Sector 7 (0x08060000, 128KB) 统一管理
+ * @brief       F407 Flash parameter storage management
+ * @note        All parameters centralized in Sector 7 (0x08060000, 128KB)
  ****************************************************************************************************
  */
 #ifndef __FLASH_PARAM_H
@@ -11,13 +11,13 @@
 #include "sys.h"
 
 /******************************************************************************************/
-/* Flash Sector 定义 (STM32F407ZG, 1MB Flash) */
+/* Flash Sector definitions (STM32F407ZG, 1MB Flash) */
 /******************************************************************************************/
-/* 参数存储区：Sector 7 (128KB) */
+/* Parameter storage area: Sector 7 (128KB) */
 #define PARAM_SECTOR                FLASH_SECTOR_7
 #define PARAM_SECTOR_BASE           0x08060000U
 
-/* 参数偏移量定义 (每个参数占 4 字节 = 1 Word) */
+/* Parameter offset definitions (4 bytes = 1 Word each) */
 #define PARAM_OFFSET_FORCE          0x00    /* 运行最大速度 */
 #define PARAM_OFFSET_FORCE_F        0x04    /* 最大占空比 */
 #define PARAM_OFFSET_TIME_C         0x08    /* 进孔速度 */
@@ -41,19 +41,23 @@
 #define PARAM_OFFSET_ETH_MASK       0x50    /* 子网掩码 (4 bytes packed) */
 #define PARAM_OFFSET_ETH_GW         0x54    /* 默认网关 (4 bytes packed) */
 #define PARAM_OFFSET_ETH_PORT       0x58    /* TCP 监听端口 */
+#define PARAM_OFFSET_FF_AMP         0x5C    /* 重力前馈: 正弦幅值 */
+#define PARAM_OFFSET_FF_PHASE       0x60    /* 重力前馈: 相位偏移 */
+#define PARAM_OFFSET_RTC_YMD        0x64    /* RTC时间备份: 年月日 packed (Y<<16|M<<8|D) */
+#define PARAM_OFFSET_RTC_HMS        0x68    /* RTC时间备份: 时分秒 packed (h<<16|m<<8|s) */
 
 /* 从Flash指定偏移读取一个32位值 */
 #define PARAM_READ(offset)          (*(__IO uint32_t *)(PARAM_SECTOR_BASE + (offset)))
 
 /******************************************************************************************/
-/* 外部接口 */
+/* External interface */
 /******************************************************************************************/
 extern u8  g_eth_ip[4];
 extern u8  g_eth_mask[4];
 extern u8  g_eth_gw[4];
 extern u16 g_eth_port;
 
-void param_load_all(void);          /* 从Flash加载所有参数（含有效性校验） */
+void param_load_all(void);          /* Load all parameters from Flash (with validity check) */
 
-void param_save_all(void);          /* 一次性保存所有参数到Flash */
+void param_save_all(void);          /* Save all parameters to Flash in one operation */
 #endif
