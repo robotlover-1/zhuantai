@@ -106,7 +106,7 @@ bootloader 不含电机控制逻辑，仅：时钟 / GPIO / UART5 / Flash 擦写
 
 ## 10. 构建与烧录
 
-- **bootloader**：现有 Keil 工程加 `boot` 目标（或独立小工程），只编 bootloader 主程序 + delay/usart/sys + HAL，IROM1 = `0x08000000`，大小 `0x10000`。产出 bootloader.hex/bin。
+- **bootloader**：**独立最小 Keil 工程**（新建，如 `MDK-ARM/boot/boot.uvprojx`），只编 boot 主程序 + delay/usart/sys + HAL，IROM1 = `0x08000000`，大小 `0x10000`，产出 bootloader.hex/bin。选独立工程而非在现有工程加目标，原因：避免误编入电机控制代码，且现有工程 XML 的改动会被 Keil 保存覆盖（fromelf 配置已证实），独立工程由 Keil GUI 创建更稳妥。
 - **APP**：现有工程改 IROM1 后照常编译，产出 test.bin（fromelf 已配）。
 - **首次量产**：ST-Link/J-Link 烧 bootloader → 上电进升级模式（无 APP 一直等）→ YModem 发 APP bin → 完成。之后只升 APP，bootloader 永不重烧。
 - **PC 端**：SecureCRT / Hterm / ExtraPuTTY 的 YModem 发送，无需自写上位机。
