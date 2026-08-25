@@ -1,13 +1,65 @@
 #include "stm32f4xx_hal.h"
 #include "sys.h"
 #include "delay.h"
-#include "usart.h"
 #include "ymodem.h"
 #include <stdio.h>
 
 #define APP_BASE          0x08010000U
 #define APP_END           0x08060000U   /* APP 区上界 = 参数区起点 */
 #define UPDATE_FLAG_ADDR  0x0807C000U
+
+/* ===== 系统时钟 168MHz (HSE=8MHz, 与 APP 的 Stm32_Clock_Init 一致) ===== */
+static void boot_clock_init(void)
+{
+    RCC_OscInitTypeDef osc = {0};
+    RCC_ClkInitTypeDef clk = {0};
+
+    __HAL_RCC_PWR_CLK_ENABLE();
+    __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+
+    osc.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+    osc.HSEState = RCC_HSE_ON;
+    osc.PLL.PLLState = RCC_PLL_ON;
+    osc.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+    osc.PLL.PLLM = 8;
+    osc.PLL.PLLN = 336;
+    osc.PLL.PLLP = RCC_PLLP_DIV2;
+    osc.PLL.PLLQ = 7;
+    HAL_RCC_OscConfig(&osc);
+
+    clk.ClockType = RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK |
+                    RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+    clk.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+    clk.AHBCLKDivider = RCC_SYSCLK_DIV1;
+    clk.APB1CLKDivider = RCC_HCLK_DIV4;
+    clk.APB2CLKDivider = RCC_HCLK_DIV2;
+    HAL_RCC_ClockConfig(&clk, FLASH_LATENCY_5);
+}
+
+/* ===== UART5 (PC12=TX, PD2=RX) 115200, 轮询收发, 不开RX中断 ===== */
+static void boot_uart5_init(uint32_t baud)
+{
+    GPIO_InitTypeDef g = {0};
+
+    __HAL_RCC_GPIOC_CLK_ENABLE();
+    __HAL_RCC_GPIOD_CLK_ENABLE();
+    __HAL_RCC_UART5_CLK_ENABLE();
+
+    g.Pin = GPIO_PIN_12;                 /* PC12: TX, AF8 */
+    g.Mode = GPIO_MODE_AF_PP;
+    g.Pull = GPIO_NOPULL;
+    g.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    g.Alternate = GPIO_AF8_UART5;
+    HAL_GPIO_Init(GPIOC, &g);
+
+    g.Pin = GPIO_PIN_2;                  /* PD2: RX, AF8 */
+    g.Pull = GPIO_PULLUP;
+    HAL_GPIO_Init(GPIOD, &g);
+
+    /* 波特率: BRR = fck/(16*baud), UART5 在 APB1 = 84MHz */
+    UART5->BRR = (uint16_t)(84000000U / (16U * baud));
+    UART5->CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
+}
 
 /* ===== 底层 UART5 原始收发（供 ymodem.c 使用）===== */
 void boot_uart_putc(uint8_t c)
@@ -32,7 +84,12 @@ void boot_uart_puts(const char *s)
     while (*s) boot_uart_putc((uint8_t)*s++);
 }
 
-/* printf 重定向由 usart.c 的 fputc 提供（UART5） */
+/* printf 重定向到 UART5 (MicroLIB) */
+int fputc(int ch, FILE *f)
+{
+    boot_uart_putc((uint8_t)ch);
+    return ch;
+}
 
 /* ===== 全局 MSP：时钟使能 ===== */
 void HAL_MspInit(void)
@@ -88,10 +145,9 @@ int main(void)
 {
     SCB->VTOR = 0x08000000U;      /* bootloader 向量表 */
     HAL_Init();
-    Stm32_Clock_Init();           /* 168MHz */
+    boot_clock_init();            /* 168MHz */
     delay_init(168);
-    uart_init(115200);            /* UART5 (PC12/PD2) */
-    UART5->CR1 &= ~USART_CR1_RXNEIE;  /* 关闭RX中断, YModem用轮询收原始字节 */
+    boot_uart5_init(115200);      /* UART5 (PC12/PD2) 轮询收发 */
 
     printf("\r\nBOOT v1.0\r\n");
 
