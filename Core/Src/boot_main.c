@@ -1,7 +1,7 @@
 #include "stm32f4xx_hal.h"
 #include "sys.h"
 #include "delay.h"
-#include "ymodem.h"
+#include "upgrade.h"
 #include <stdio.h>
 
 #define APP_BASE          0x08010000U
@@ -127,11 +127,11 @@ static void clear_update_flag(void)
 
 static void do_upgrade(void)
 {
-    ymodem_ctx_t ctx = {0};
+    upgrade_ctx_t ctx = {0};
     ctx.target_addr = APP_BASE;
     ctx.max_size    = APP_END - APP_BASE;
-    int r = ymodem_receive(&ctx);
-    if (r == 0) {
+    int r = upgrade_receive(&ctx);
+    if (r == 0 && app_valid()) {       /* 裸协议无校验, 写完后必须验证向量表 */
         clear_update_flag();
         boot_uart_puts("\r\nBOOT: upgrade OK, jumping...\r\n");
         delay_ms(200);
