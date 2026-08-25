@@ -72,6 +72,7 @@ static void do_upgrade(void)
 {
     ymodem_ctx_t ctx = {0};
     ctx.target_addr = APP_BASE;
+    ctx.max_size    = APP_END - APP_BASE;
     int r = ymodem_receive(&ctx);
     if (r == 0) {
         clear_update_flag();

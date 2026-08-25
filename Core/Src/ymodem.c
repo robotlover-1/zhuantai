@@ -120,6 +120,7 @@ int ymodem_receive(ymodem_ctx_t *ctx)
             else {
                 /* 数据块 */
                 if (seq != (uint8_t)exp_seq) { boot_uart_putc(NAK); continue; }
+                if (ctx->received + dlen > ctx->max_size) { HAL_FLASH_Lock(); return -4; }  /* 固件超界 */
                 flash_write_words(ctx->target_addr + ctx->received, data, dlen);
                 ctx->received += dlen;
                 exp_seq = (exp_seq + 1) & 0xFF;
