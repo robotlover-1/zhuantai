@@ -23,6 +23,7 @@ u8 error = 0;
 
 int pulse_cut = 1000;
 int32_t pulse_compensate = 1000;
+u8 g_no_compensate = 0;        /* 0=补偿, 1=一步到位不补偿 */
 int32_t step_decel_2 = 100;
 int32_t step_accel_2 = 100;
 int level_speed = 0;
@@ -53,6 +54,10 @@ __IO uint16_t g_step2 = 300;
 int32_t writeFlashData = 0;
 int loop1 = 0;
 int loop2 = 0;
+int PL_T = 60;   /* PL 疲劳测试大循环(约12小时) */
+int PL_H = 30;   /* PL 疲劳测试小循环 */
+int CS_T = 40;   /* CS 自动测试大循环(约12小时) */
+int CS_H = 30;   /* CS 自动测试小循环 */
 
 extern __IO int32_t  g_step_position;
 extern __IO uint8_t  g_motion_sta;
@@ -65,7 +70,7 @@ int main(void)
     u8 len;
     int32_t i = 0;
 
-    SCB->VTOR = FLASH_BASE;
+    SCB->VTOR = 0x08010000U;     /* APP 已搬移到 bootloader 之后 */
 
     HAL_Init();
     Stm32_Clock_Init();            /* 168MHz */
@@ -77,7 +82,7 @@ int main(void)
     for (i = 0; i < USART_REC_LEN_4; i++) USART_RX_BUF_4[i] = 0;
 
     step_motor_init();             /* GPIO 初始化 */
-    atim_timx_pwm_chy_init(0xFFFF, 36 - 1);  /* TIM1_CH1 步进脉冲 */
+    atim_timx_pwm_chy_init(0xFFFF, 84 - 1);  /* TIM1_CH1 步进脉冲, 168M/84=2M 与F1一致 */
     TIM5_Init(5000-1, 8400-1);    /* 4Hz 超时 */
     TIM4_Init(5000-1, 16800-1);   /* 2Hz 用时计时 */
 
@@ -88,6 +93,8 @@ int main(void)
     for (i = 0; i < USART_REC_LEN; i++) USART_RX_BUF[i] = 0;
 
     param_load_all();             /* 加载 Flash 参数 */
+
+    write_update_flag(0);         /* APP正常启动, 清除固件升级标志 (对齐F1, 防复位误进升级) */
 
     /* 打印启动信息 */
     {
@@ -103,28 +110,26 @@ int main(void)
         if (USART_RX_STA_4 & 0x8000) {
             len = USART_RX_STA_4 & 0x3fff;
             USART_RX_STA_4 = 0;
-            HAL_UART_Transmit(&UART4_Handler, (uint8_t*)USART_RX_BUF_4, len, 1000);
-            while (__HAL_UART_GET_FLAG(&UART4_Handler, UART_FLAG_TC) != SET);
-            printf("\r\n");
+            USART_RX_BUF_4[len] = '\0';
+            printf("%s\r\n", USART_RX_BUF_4);   /* 回显 */
             cmd_dispatch(USART_RX_BUF_4, len);
         }
 
-        /* 2. USART1 调试接收 (115200) */
+        /* 2. UART5 调试接收 (115200) */
         if (USART_RX_STA & 0x8000) {
             len = USART_RX_STA & 0x3fff;
             USART_RX_STA = 0;
-            HAL_UART_Transmit(&UART4_Handler, (uint8_t*)USART_RX_BUF, len, 1000);
-            while (__HAL_UART_GET_FLAG(&UART4_Handler, UART_FLAG_TC) != SET);
-            printf("\r\n");
+            USART_RX_BUF[len] = '\0';
+            printf("%s\r\n", USART_RX_BUF);     /* 回显 */
             cmd_dispatch(USART_RX_BUF, len);
         }
 
-        /* 3. 硬件 IO 检测 (同 F1) */
-        if (HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_6) == 1) {      /* PF6 → F1 PE2 正转 */
+        /* 3. 硬件 IO 检测 (光耦输入: 24V施加=LOW) */
+        if (HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_6) == 0) {      /* PF6: 正转 (LOW有效) */
             printf("IO:RTF\r\n");
             cmd_rtf();
         }
-        if (HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_7) == 1) {      /* PF7 → F1 PE4 急停 */
+        if (HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_7) == 0) {      /* PF7: 急停 (LOW有效) */
             printf("IO:RTS\r\n");
             HAL_TIM_OC_Stop_IT(&g_timx_pwm_chy_handle, ATIM_TIMX_PWM_CHY);
             HAL_TIM_Base_Stop_IT(&TIM5_Handler);
@@ -136,10 +141,12 @@ int main(void)
             printf_flag = 0;
             reset_flag = 1;
         }
-        if (HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_2) == 1) {      /* PE2 → F1 PE3 复位 */
+        if (HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_2) == 0) {      /* PE2: 复位 (LOW有效) */
             time_out = 0;
             error = 0;
             g_zero_flag = 0;
+            reset_flag = 0;            /* 解除急停锁定 (恢复F1: 复位同时清reset_flag) */
+            alarm_set(0);              /* 清除报警输出 */
         }
 
         /* 4. 运动完成后处理 */
@@ -154,8 +161,8 @@ int main(void)
                 HAL_GPIO_WritePin(ST1_DONE_GPIO_PORT, ST1_DONE_GPIO_PIN, GPIO_PIN_RESET);
 
                 total_cycles++;
-                if (total_cycles < 10000000) {
-                    param_save_all();  /* 保存 cycles 到 Flash */
+                if (total_cycles % 1000 == 0) {
+                    param_save_all();  /* 每1000次保存到 Flash, 减少擦写 */
                 }
                 printf_flag = 0;
             }
