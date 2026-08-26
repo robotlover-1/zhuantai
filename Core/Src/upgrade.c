@@ -6,11 +6,22 @@ extern void boot_uart_putc(uint8_t c);
 extern int  boot_uart_getc(uint32_t timeout_ms);
 extern void boot_uart_puts(const char *s);
 
-#define IDLE_TIMEOUT_MS  100U      /* 单次无数据检测窗口 */
-#define IDLE_END_CNT     30U       /* 30×100ms=3s 无数据 = 传完 (容忍XCOM分块停顿) */
 #define MAX_FW_SIZE      0x18000U  /* 固件上限 96KB: 先收进RAM再写, 避免写入期间丢字节 */
+#define IDLE_TIGHT_LOOPS 20000U    /* 紧密轮询窗口 (~1ms), 期间持续检查RXNE, 不丢字节 */
+#define IDLE_END_CNT     3000U     /* 3000×~1ms = ~3s 无数据 = 传完 */
 
 static uint8_t fw_buf[MAX_FW_SIZE];  /* 固件缓冲 (128KB SRAM 内) */
+
+/* 紧密轮询读一个字节: ~1ms 窗口内持续检查 RXNE, 返回字节或 -1
+ * 不用 delay_ms(1), 避免发送方微空隙期间 UART 1字节缓冲溢出丢字节 */
+static int getc_idle(void)
+{
+    for (uint32_t i = 0; i < IDLE_TIGHT_LOOPS; i++) {
+        if (UART5->SR & USART_SR_RXNE) return (int)(UART5->DR & 0xFF);
+        if (UART5->SR & USART_SR_ORE)  { (void)UART5->DR; }
+    }
+    return -1;
+}
 
 int upgrade_receive(upgrade_ctx_t *ctx)
 {
@@ -22,23 +33,23 @@ int upgrade_receive(upgrade_ctx_t *ctx)
 
     /* 裸协议无流控: 先把整个文件收进 RAM, 再擦除+写入, 避免写 Flash 期间 UART 字节丢失 */
 
-    /* 等第一个字节: 不设超时, 用户可从容点"发送文件" */
+    /* 等第一个字节: 紧密轮询不超时, 用户可从容点"发送文件" */
     do {
-        c = boot_uart_getc(1000);
+        c = getc_idle();
     } while (c < 0);
     if (len >= MAX_FW_SIZE || len >= ctx->max_size) return -4;  /* 固件超限 */
     fw_buf[len++] = (uint8_t)c;
 
-    /* 后续: 空闲 1 秒判定传输结束 */
+    /* 收剩余: 紧密轮询, ~3s 无数据判定传完 */
     while (1) {
-        c = boot_uart_getc(IDLE_TIMEOUT_MS);
-        if (c < 0) {
-            if (++idle >= IDLE_END_CNT) break;   /* 1s 无数据 = 传完 */
-            continue;
+        c = getc_idle();
+        if (c >= 0) {
+            if (len >= MAX_FW_SIZE || len >= ctx->max_size) return -4;  /* 固件超限 */
+            fw_buf[len++] = (uint8_t)c;
+            idle = 0;
+        } else {
+            if (++idle >= IDLE_END_CNT) break;   /* ~3s 无数据 = 传完 */
         }
-        idle = 0;
-        if (len >= MAX_FW_SIZE || len >= ctx->max_size) return -4;  /* 固件超限 */
-        fw_buf[len++] = (uint8_t)c;
     }
 
     /* 收完: 擦除 APP 区 Sector4-6, 再顺序写入 */
