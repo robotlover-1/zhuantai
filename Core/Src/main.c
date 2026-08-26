@@ -9,6 +9,7 @@
 #include "flash_param.h"
 #include "cmd_handler.h"
 #include "rtc.h"
+#include "eth.h"
 #include <stdio.h>
 
 /******* F1 全局变量 *******/
@@ -65,6 +66,32 @@ extern __IO uint32_t g_add_pulse_count;
 
 void SystemClock_Config(void);
 
+/* ===== 临时诊断: 早期裸 UART5 打印, 定位 APP 启动卡点 (定位后删除) ===== */
+static void diag_uart_init(void)
+{
+    __HAL_RCC_GPIOC_CLK_ENABLE();
+    __HAL_RCC_GPIOD_CLK_ENABLE();
+    __HAL_RCC_UART5_CLK_ENABLE();
+    GPIO_InitTypeDef g = {0};
+    g.Pin = GPIO_PIN_12; g.Mode = GPIO_MODE_AF_PP; g.Pull = GPIO_NOPULL;
+    g.Speed = GPIO_SPEED_FREQ_VERY_HIGH; g.Alternate = GPIO_AF8_UART5;
+    HAL_GPIO_Init(GPIOC, &g);
+    g.Pin = GPIO_PIN_2; g.Pull = GPIO_PULLUP;
+    HAL_GPIO_Init(GPIOD, &g);
+    uint32_t bd = 16U * 115200U;
+    uint32_t mant = 42000000U / bd;
+    uint32_t frac = ((42000000U % bd) * 16U + bd / 2U) / bd;
+    UART5->BRR = (mant << 4) | (frac & 0x0FU);
+    UART5->CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
+}
+static void diag_puts(const char *s)
+{
+    while (*s) {
+        while (!(UART5->SR & USART_SR_TXE)) {}
+        UART5->DR = (uint8_t)*s++;
+    }
+}
+
 int main(void)
 {
     u8 len;
@@ -75,18 +102,24 @@ int main(void)
     HAL_Init();
     Stm32_Clock_Init();            /* 168MHz */
     delay_init(168);
+    diag_uart_init();
+    diag_puts("\r\n[app] clk ok\r\n");
     rtc_init();                    /* RTC 从编译时间初始化 */
-
+    diag_puts("[app] rtc ok\r\n");
     uart4_init(9600);              /* UART4 上位机 */
+    diag_puts("[app] uart4 ok\r\n");
     USART_RX_STA_4 = 0;
     for (i = 0; i < USART_REC_LEN_4; i++) USART_RX_BUF_4[i] = 0;
 
     step_motor_init();             /* GPIO 初始化 */
+    diag_puts("[app] motor init ok\r\n");
     atim_timx_pwm_chy_init(0xFFFF, 84 - 1);  /* TIM1_CH1 步进脉冲, 168M/84=2M 与F1一致 */
     TIM5_Init(5000-1, 8400-1);    /* 4Hz 超时 */
     TIM4_Init(5000-1, 16800-1);   /* 2Hz 用时计时 */
+    diag_puts("[app] timers ok\r\n");
 
     uart_init(115200);            /* USART1 调试 */
+    diag_puts("[app] uart ok\r\n");
 
     __enable_irq();
     USART_RX_STA = 0;
@@ -95,6 +128,11 @@ int main(void)
     param_load_all();             /* 加载 Flash 参数 */
 
     write_update_flag(0);         /* APP正常启动, 清除固件升级标志 (对齐F1, 防复位误进升级) */
+
+    /* 以太网初始化 (DM9000 + LwIP + TCP Server)
+     * 放在 param_load_all 之后: 使 g_eth_ip 等使用 Flash 中已加载的网络参数;
+     * DM9000 初始化失败只打印日志, 不影响串口模式 */
+    eth_init();
 
     /* 打印启动信息 */
     {
@@ -122,6 +160,25 @@ int main(void)
             USART_RX_BUF[len] = '\0';
             printf("%s\r\n", USART_RX_BUF);     /* 回显 */
             cmd_dispatch(USART_RX_BUF, len);
+        }
+
+        /* ---- 以太网处理 ---- */
+        /* 1. LwIP 协议栈周期处理 (收包、定时器、TCP 发送) */
+        MX_LWIP_Process();
+
+        /* 2. TCP 接收处理 (镜像 UART5 的处理逻辑) */
+        if (g_eth_rx_ready) {
+            u16 eth_len = g_eth_rx_len;
+            g_eth_rx_ready = 0;
+            g_eth_rx_len = 0;
+            g_cmd_src = CMD_SRC_TCP;
+            printf("ETH_RX: %s\r\n", g_eth_rx_buf);     /* 回显 (同时发回 TCP) */
+            cmd_dispatch(g_eth_rx_buf, eth_len);
+            g_cmd_src = CMD_SRC_UART;
+            {
+                u16 i;
+                for (i = 0; i < ETH_RX_BUF_SIZE; i++) g_eth_rx_buf[i] = 0;   /* 清理 */
+            }
         }
 
         /* 3. 硬件 IO 检测 (光耦输入: 24V施加=LOW) */
