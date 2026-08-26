@@ -141,6 +141,12 @@ void HAL_MspInit(void)
     __HAL_RCC_PWR_CLK_ENABLE();
 }
 
+/* SysTick 中断: HAL_InitTick 已使能, 必须有处理函数, 否则进 Default_Handler 死循环
+ * delay_us/ms 是轮询 SysTick->VAL, 不依赖此中断 */
+void SysTick_Handler(void)
+{
+}
+
 /* APP 有效性: 栈指针在 RAM 内, 复位向量在 APP 区 */
 static int app_valid(void)
 {
