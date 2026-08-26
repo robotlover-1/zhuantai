@@ -150,9 +150,12 @@ int main(void)
         }
 
         /* 3. 硬件 IO 检测 (光耦输入: 24V施加=LOW) */
-        if (HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_6) == 0) {      /* PF6: 正转 (LOW有效) */
-            printf("IO:RTF\r\n");
-            cmd_rtf();
+        if (HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_6) == 0) {      /* PF6: 复位 (LOW有效) */
+            time_out = 0;
+            error = 0;
+            g_zero_flag = 0;
+            reset_flag = 0;            /* 解除急停锁定 */
+            alarm_set(0);              /* 清除报警输出 */
         }
         if (HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_7) == 0) {      /* PF7: 急停 (LOW有效) */
             printf("IO:RTS\r\n");
@@ -165,13 +168,6 @@ int main(void)
             g_zero_flag = 0;
             printf_flag = 0;
             reset_flag = 1;
-        }
-        if (HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_2) == 0) {      /* PE2: 复位 (LOW有效) */
-            time_out = 0;
-            error = 0;
-            g_zero_flag = 0;
-            reset_flag = 0;            /* 解除急停锁定 (恢复F1: 复位同时清reset_flag) */
-            alarm_set(0);              /* 清除报警输出 */
         }
 
         /* 4. 运动完成后处理 */
