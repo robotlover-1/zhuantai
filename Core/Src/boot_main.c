@@ -150,33 +150,14 @@ static int app_valid(void)
            (pc >= APP_BASE && pc < APP_END);
 }
 
-typedef void (*app_entry_t)(void);
-
 static void jump_to_app(void)
 {
     uint32_t sp = *(volatile uint32_t *)APP_BASE;
     uint32_t pc = *(volatile uint32_t *)(APP_BASE + 4);
-
-    if (!app_valid()) return;
-
     __disable_irq();
-    SysTick->CTRL = 0;
-    SysTick->LOAD = 0;
-    SysTick->VAL  = 0;
-    for (uint32_t i = 0; i < 8U; i++) {
-        NVIC->ICER[i] = 0xFFFFFFFFU;
-        NVIC->ICPR[i] = 0xFFFFFFFFU;
-    }
-    HAL_RCC_DeInit();
     SCB->VTOR = APP_BASE;
-    __DSB();
-    __ISB();
     __set_MSP(sp);
-    __set_CONTROL(0);
-    __DSB();
-    __ISB();
-    ((app_entry_t)pc)();
-    while (1) {}
+    ((void (*)(void))pc)();
 }
 
 static void clear_update_flag(void)
