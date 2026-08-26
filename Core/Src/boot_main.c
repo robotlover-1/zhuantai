@@ -56,8 +56,12 @@ static void boot_uart5_init(uint32_t baud)
     g.Pull = GPIO_PULLUP;
     HAL_GPIO_Init(GPIOD, &g);
 
-    /* 波特率: BRR = fck/(16*baud), UART5 在 APB1 = 84MHz */
-    UART5->BRR = (uint16_t)(84000000U / (16U * baud));
+    /* 波特率: UART5 挂 APB1 = 42MHz (注意不是84MHz, 只有定时器才×2, UART不翻倍)
+     * BRR: 高12位 mantissa + 低4位 fraction, 计算同 HAL */
+    uint32_t bauddiv = 16U * baud;
+    uint32_t mantissa = 42000000U / bauddiv;
+    uint32_t fraction = ((42000000U % bauddiv) * 16U + bauddiv / 2U) / bauddiv;
+    UART5->BRR = (mantissa << 4) | (fraction & 0x0FU);
     UART5->CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
 }
 
