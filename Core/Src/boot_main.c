@@ -2,7 +2,6 @@
 #include "sys.h"
 #include "delay.h"
 #include "upgrade.h"
-#include <stdio.h>
 
 #define APP_BASE          0x08010000U
 #define APP_END           0x08060000U   /* APP 区上界 = 参数区起点 */
@@ -65,7 +64,7 @@ static void boot_uart5_init(uint32_t baud)
     UART5->CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
 }
 
-/* ===== 底层 UART5 原始收发（供 ymodem.c 使用）===== */
+/* ===== 底层 UART5 原始收发 ===== */
 void boot_uart_putc(uint8_t c)
 {
     uint32_t t = 500000;
@@ -77,7 +76,7 @@ int boot_uart_getc(uint32_t timeout_ms)
 {
     while (timeout_ms--) {
         if (UART5->SR & USART_SR_RXNE) return (int)(UART5->DR & 0xFF);
-        if (UART5->SR & USART_SR_ORE)  { (void)UART5->DR; }  /* 清溢出错误 */
+        if (UART5->SR & USART_SR_ORE)  { (void)UART5->DR; }
         delay_ms(1);
     }
     return -1;
@@ -88,11 +87,15 @@ void boot_uart_puts(const char *s)
     while (*s) boot_uart_putc((uint8_t)*s++);
 }
 
-/* printf 重定向到 UART5 (MicroLIB) */
-int fputc(int ch, FILE *f)
+/* 十六进制打印 (printf 不可用时用) */
+static void boot_uart_hex32(uint32_t v)
 {
-    boot_uart_putc((uint8_t)ch);
-    return ch;
+    static const char hex[] = "0123456789ABCDEF";
+    char buf[11];
+    buf[0] = '0'; buf[1] = 'x';
+    for (int i = 0; i < 8; i++) buf[2 + i] = hex[(v >> (28 - 4 * i)) & 0xF];
+    buf[10] = '\0';
+    boot_uart_puts(buf);
 }
 
 /* ===== 全局 MSP：时钟使能 ===== */
@@ -135,10 +138,15 @@ static void do_upgrade(void)
     ctx.target_addr = APP_BASE;
     ctx.max_size    = APP_END - APP_BASE;
     int r = upgrade_receive(&ctx);
-    if (r == 0)
-        printf("BOOT: received %d bytes\r\n", (int)ctx.received);
-    else
-        printf("BOOT: receive error %d\r\n", r);
+    if (r == 0) {
+        boot_uart_puts("BOOT: received=");
+        boot_uart_hex32(ctx.received);
+        boot_uart_puts(" bytes\r\n");
+    } else {
+        boot_uart_puts("BOOT: receive error ");
+        boot_uart_hex32((uint32_t)r);
+        boot_uart_puts("\r\n");
+    }
     if (r == 0 && app_valid()) {       /* 裸协议无校验, 写完后必须验证向量表 */
         clear_update_flag();
         boot_uart_puts("\r\nBOOT: upgrade OK, jumping...\r\n");
@@ -151,27 +159,29 @@ static void do_upgrade(void)
 
 int main(void)
 {
-    SCB->VTOR = 0x08000000U;      /* bootloader 向量表 */
+    SCB->VTOR = 0x08000000U;
     HAL_Init();
-    boot_clock_init();            /* 168MHz */
+    boot_clock_init();
     delay_init(168);
-    boot_uart5_init(115200);      /* UART5 (PC12/PD2) 轮询收发 */
+    boot_uart5_init(115200);
 
-    printf("\r\nBOOT v1.0\r\n");
-    printf("[boot] init ok\r\n");
+    boot_uart_puts("\r\nBOOT v1.1\r\n");
+    boot_uart_puts("[boot] init ok\r\n");
 
     while (1) {
         uint32_t flag = *(volatile uint32_t *)UPDATE_FLAG_ADDR;
-        printf("[boot] flag=%u\r\n", (unsigned)flag);
+        boot_uart_puts("[boot] flag=");
+        boot_uart_hex32(flag);
+        boot_uart_puts("\r\n");
         if (flag == 1) {
-            printf("[boot] -> upgrade\r\n");
+            boot_uart_puts("[boot] -> upgrade\r\n");
             do_upgrade();                       /* 成功则跳转, 失败重试 */
         } else if (app_valid()) {
-            printf("[boot] -> jump APP\r\n");
+            boot_uart_puts("[boot] -> jump APP\r\n");
             delay_ms(100);
             jump_to_app();
         } else {
-            printf("[boot] -> wait\r\n");
+            boot_uart_puts("[boot] -> wait\r\n");
             do_upgrade();
         }
     }
