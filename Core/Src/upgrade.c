@@ -16,12 +16,22 @@ int upgrade_receive(upgrade_ctx_t *ctx)
 {
     uint32_t len = 0;
     uint32_t idle = 0;
+    int c;
 
     boot_uart_puts("\r\nBOOT: waiting bin, XCOM send file now...\r\n");
 
     /* 裸协议无流控: 先把整个文件收进 RAM, 再擦除+写入, 避免写 Flash 期间 UART 字节丢失 */
+
+    /* 等第一个字节: 不设超时, 用户可从容点"发送文件" */
+    do {
+        c = boot_uart_getc(1000);
+    } while (c < 0);
+    if (len >= MAX_FW_SIZE || len >= ctx->max_size) return -4;  /* 固件超限 */
+    fw_buf[len++] = (uint8_t)c;
+
+    /* 后续: 空闲 1 秒判定传输结束 */
     while (1) {
-        int c = boot_uart_getc(IDLE_TIMEOUT_MS);
+        c = boot_uart_getc(IDLE_TIMEOUT_MS);
         if (c < 0) {
             if (++idle >= IDLE_END_CNT) break;   /* 1s 无数据 = 传完 */
             continue;
@@ -30,8 +40,6 @@ int upgrade_receive(upgrade_ctx_t *ctx)
         if (len >= MAX_FW_SIZE || len >= ctx->max_size) return -4;  /* 固件超限 */
         fw_buf[len++] = (uint8_t)c;
     }
-
-    if (len == 0) return -1;   /* 一个字节都没收到 */
 
     /* 收完: 擦除 APP 区 Sector4-6, 再顺序写入 */
     HAL_FLASH_Unlock();
