@@ -155,6 +155,7 @@ static void jump_to_app(void)
     uint32_t sp = *(volatile uint32_t *)APP_BASE;
     uint32_t pc = *(volatile uint32_t *)(APP_BASE + 4);
     __disable_irq();
+    HAL_RCC_DeInit();          /* 时钟恢复默认(HSI 16MHz), 让 APP 从正常复位状态启动 */
     SCB->VTOR = APP_BASE;
     __DSB();
     __ISB();
