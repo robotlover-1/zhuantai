@@ -158,17 +158,20 @@ int main(void)
     boot_uart5_init(115200);      /* UART5 (PC12/PD2) 轮询收发 */
 
     printf("\r\nBOOT v1.0\r\n");
+    printf("[boot] init ok\r\n");
 
     while (1) {
-        if (*(volatile uint32_t *)UPDATE_FLAG_ADDR == 1) {
-            printf("BOOT: update flag set, upgrade mode\r\n");
+        uint32_t flag = *(volatile uint32_t *)UPDATE_FLAG_ADDR;
+        printf("[boot] flag=%u\r\n", (unsigned)flag);
+        if (flag == 1) {
+            printf("[boot] -> upgrade\r\n");
             do_upgrade();                       /* 成功则跳转, 失败重试 */
         } else if (app_valid()) {
-            printf("BOOT: jump APP\r\n");
+            printf("[boot] -> jump APP\r\n");
             delay_ms(100);
             jump_to_app();
         } else {
-            printf("BOOT: no valid APP, waiting YModem...\r\n");
+            printf("[boot] -> wait\r\n");
             do_upgrade();
         }
     }
