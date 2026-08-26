@@ -7,7 +7,7 @@ extern int  boot_uart_getc(uint32_t timeout_ms);
 extern void boot_uart_puts(const char *s);
 
 #define IDLE_TIMEOUT_MS  100U      /* 单次无数据检测窗口 */
-#define IDLE_END_CNT     10U       /* 10×100ms=1s 无数据 = 传完 */
+#define IDLE_END_CNT     30U       /* 30×100ms=3s 无数据 = 传完 (容忍XCOM分块停顿) */
 #define MAX_FW_SIZE      0x18000U  /* 固件上限 96KB: 先收进RAM再写, 避免写入期间丢字节 */
 
 static uint8_t fw_buf[MAX_FW_SIZE];  /* 固件缓冲 (128KB SRAM 内) */
