@@ -7,7 +7,9 @@
 #define APP_END           0x08060000U   /* APP 区上界 = 参数区起点 */
 #define UPDATE_FLAG_ADDR  0x0807C000U
 
-/* ===== 系统时钟 168MHz (HSE=8MHz, 与 APP 的 Stm32_Clock_Init 一致) ===== */
+/* ===== 系统时钟 168MHz (用内部 HSI 做 PLL 源, 无需外部晶振, 冷启动可靠)
+ * HSI=16MHz: PLLM=16 → VCO输入1MHz → PLLN=336 → VCO 336MHz → /2 = 168MHz
+ * APB1 = 168/4 = 42MHz (与 APP 用 HSE 时相同, UART 波特率不变) ===== */
 static void boot_clock_init(void)
 {
     RCC_OscInitTypeDef osc = {0};
@@ -16,11 +18,12 @@ static void boot_clock_init(void)
     __HAL_RCC_PWR_CLK_ENABLE();
     __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
 
-    osc.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-    osc.HSEState = RCC_HSE_ON;
+    osc.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+    osc.HSIState = RCC_HSI_ON;
+    osc.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
     osc.PLL.PLLState = RCC_PLL_ON;
-    osc.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-    osc.PLL.PLLM = 8;
+    osc.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+    osc.PLL.PLLM = 16;
     osc.PLL.PLLN = 336;
     osc.PLL.PLLP = RCC_PLLP_DIV2;
     osc.PLL.PLLQ = 7;
@@ -210,7 +213,7 @@ int main(void)
     delay_init(168);
     boot_uart5_init(115200);
 
-    boot_uart_puts("\r\nBOOT v1.2\r\n");
+    boot_uart_puts("\r\nBOOT v1.3\r\n");
     print_reset_cause();
     boot_uart_puts("[boot] init ok\r\n");
 
