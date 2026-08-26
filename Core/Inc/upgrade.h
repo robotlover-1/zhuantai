@@ -10,8 +10,8 @@ typedef struct {
     uint32_t max_size;      /* 最大可写字节数 (APP区大小) */
 } upgrade_ctx_t;
 
-/* 接收一个 .bin 文件到 Flash（XCOM"发送文件"裸字节, 空闲1s判结束）
- * 返回: 0=成功, -1=未收到数据, -2=擦除失败, -4=固件超限 */
+/* 接收一个 .bin 文件到 Flash（XCOM"发送文件"裸字节, ~3s空闲判结束, 写后读回校验）
+ * 返回: 0=成功, -1=未收到数据, -2=擦除失败, -3=写入失败, -4=固件超限, -5=写回校验失败 */
 int upgrade_receive(upgrade_ctx_t *ctx);
 
 #endif

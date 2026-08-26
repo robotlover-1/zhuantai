@@ -143,7 +143,7 @@ int main(void)
     {
         char ts[32];
         rtc_get_time_str(ts, sizeof(ts));
-        printf("[%s] F1-Stepper on F407 ready\r\n", ts);
+        printf("[%s] F1-Stepper V2 on F407 ready\r\n", ts);
         printf("total_cycles: %d\r\n", total_cycles);
     }
 

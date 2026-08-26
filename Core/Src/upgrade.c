@@ -74,6 +74,19 @@ int upgrade_receive(upgrade_ctx_t *ctx)
             return -3;
         }
     }
+
+    /* 写回校验: 读 Flash 与缓冲比对, 不一致判失败 */
+    for (uint32_t i = 0; i < len; i += 4U) {
+        uint32_t w = 0U;
+        for (uint32_t j = 0; j < 4U; j++) {
+            if (i + j < len)
+                w |= (uint32_t)fw_buf[i + j] << (8U * j);
+        }
+        if (*(volatile uint32_t *)(ctx->target_addr + i) != w) {
+            HAL_FLASH_Lock();
+            return -5;   /* 写回校验失败 */
+        }
+    }
     HAL_FLASH_Lock();
 
     ctx->received = len;
