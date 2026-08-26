@@ -43,14 +43,17 @@ int upgrade_receive(upgrade_ctx_t *ctx)
     f.VoltageRange  = FLASH_VOLTAGE_RANGE_3;
     if (HAL_FLASHEx_Erase(&f, &err) != HAL_OK) { HAL_FLASH_Lock(); return -2; }
 
-    /* 4 字节对齐写入 (尾部补 0) */
-    uint32_t wlen = (len + 3U) & ~3U;
-    for (uint32_t i = 0; i < wlen; i += 4) {
-        uint32_t w = (uint32_t)fw_buf[i]
-                   | ((uint32_t)fw_buf[i+1] << 8)
-                   | ((uint32_t)fw_buf[i+2] << 16)
-                   | ((uint32_t)fw_buf[i+3] << 24);
-        HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, ctx->target_addr + i, w);
+    /* 4 字节对齐写入 (不足4字节尾部补 0, 不越界读) */
+    for (uint32_t i = 0; i < len; i += 4U) {
+        uint32_t w = 0U;
+        for (uint32_t j = 0; j < 4U; j++) {
+            if (i + j < len)
+                w |= (uint32_t)fw_buf[i + j] << (8U * j);
+        }
+        if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, ctx->target_addr + i, w) != HAL_OK) {
+            HAL_FLASH_Lock();
+            return -3;
+        }
     }
     HAL_FLASH_Lock();
 

@@ -67,9 +67,20 @@ static void boot_uart5_init(uint32_t baud)
 /* ===== 底层 UART5 原始收发 ===== */
 void boot_uart_putc(uint8_t c)
 {
-    uint32_t t = 500000;
-    while (!(UART5->SR & USART_SR_TC)) if (--t == 0) break;
+    uint32_t timeout = 1000000U;
+    while (!(UART5->SR & USART_SR_TXE)) {
+        if (--timeout == 0U) return;
+    }
     UART5->DR = c;
+}
+
+/* 等待发送完成(TC), 跳转/复位前调用, 避免最后一个字节丢 */
+void boot_uart_wait_complete(void)
+{
+    uint32_t timeout = 1000000U;
+    while (!(UART5->SR & USART_SR_TC)) {
+        if (--timeout == 0U) break;
+    }
 }
 
 int boot_uart_getc(uint32_t timeout_ms)
@@ -98,6 +109,21 @@ static void boot_uart_hex32(uint32_t v)
     boot_uart_puts(buf);
 }
 
+/* 打印复位原因 (RCC->CSR), 排查看门狗/连续复位 */
+static void print_reset_cause(void)
+{
+    uint32_t csr = RCC->CSR;
+    boot_uart_puts("[boot] RCC_CSR=0x");
+    boot_uart_hex32(csr);
+    boot_uart_puts("\r\n");
+    if (csr & RCC_CSR_IWDGRSTF) boot_uart_puts("[boot] reset: IWDG\r\n");
+    if (csr & RCC_CSR_WWDGRSTF) boot_uart_puts("[boot] reset: WWDG\r\n");
+    if (csr & RCC_CSR_SFTRSTF)  boot_uart_puts("[boot] reset: software\r\n");
+    if (csr & RCC_CSR_PINRSTF)  boot_uart_puts("[boot] reset: pin\r\n");
+    if (csr & RCC_CSR_PORRSTF)  boot_uart_puts("[boot] reset: POR\r\n");
+    __HAL_RCC_CLEAR_RESET_FLAGS();
+}
+
 /* ===== 全局 MSP：时钟使能 ===== */
 void HAL_MspInit(void)
 {
@@ -114,14 +140,33 @@ static int app_valid(void)
            (pc >= APP_BASE && pc < APP_END);
 }
 
+typedef void (*app_entry_t)(void);
+
 static void jump_to_app(void)
 {
     uint32_t sp = *(volatile uint32_t *)APP_BASE;
     uint32_t pc = *(volatile uint32_t *)(APP_BASE + 4);
+
+    if (!app_valid()) return;
+
     __disable_irq();
+    SysTick->CTRL = 0;
+    SysTick->LOAD = 0;
+    SysTick->VAL  = 0;
+    for (uint32_t i = 0; i < 8U; i++) {
+        NVIC->ICER[i] = 0xFFFFFFFFU;
+        NVIC->ICPR[i] = 0xFFFFFFFFU;
+    }
+    HAL_RCC_DeInit();
     SCB->VTOR = APP_BASE;
+    __DSB();
+    __ISB();
     __set_MSP(sp);
-    ((void (*)(void))pc)();
+    __set_CONTROL(0);
+    __DSB();
+    __ISB();
+    ((app_entry_t)pc)();
+    while (1) {}
 }
 
 static void clear_update_flag(void)
@@ -150,7 +195,7 @@ static void do_upgrade(void)
     if (r == 0 && app_valid()) {       /* 裸协议无校验, 写完后必须验证向量表 */
         clear_update_flag();
         boot_uart_puts("\r\nBOOT: upgrade OK, jumping...\r\n");
-        delay_ms(200);
+        boot_uart_wait_complete();
         jump_to_app();
     } else {
         boot_uart_puts("\r\nBOOT: upgrade failed, retrying...\r\n");
@@ -165,7 +210,8 @@ int main(void)
     delay_init(168);
     boot_uart5_init(115200);
 
-    boot_uart_puts("\r\nBOOT v1.1\r\n");
+    boot_uart_puts("\r\nBOOT v1.2\r\n");
+    print_reset_cause();
     boot_uart_puts("[boot] init ok\r\n");
 
     while (1) {
