@@ -150,19 +150,25 @@ static int app_valid(void)
            (pc >= APP_BASE && pc < APP_END);
 }
 
-static void jump_to_app(void)
+/* 裸函数跳转: 纯内联汇编, 无编译器生成的栈操作, 避免 __set_MSP 后从旧栈读 pc 的隐患 */
+__attribute__((naked)) static void jump_to_app(void)
 {
-    uint32_t sp = *(volatile uint32_t *)APP_BASE;
-    uint32_t pc = *(volatile uint32_t *)(APP_BASE + 4);
-    __disable_irq();
-    SCB->VTOR = APP_BASE;
-    __DSB();
-    __ISB();
-    __set_MSP(sp);
-    __DSB();
-    __ISB();
-    /* 内联 bx 直接分支, 不经过编译器生成的函数调用栈操作 */
-    __asm volatile ("bx %0" : : "r" (pc));
+    __asm volatile (
+        "cpsid   i\n"                      /* 关中断 */
+        "movw    r0, #0x0000\n"
+        "movt    r0, #0x0801\n"            /* r0 = 0x08010000 (APP_BASE) */
+        "ldr     r1, [r0]\n"               /* r1 = APP 栈指针 */
+        "ldr     r2, [r0, #4]\n"           /* r2 = APP 复位向量 */
+        "movw    r3, #0xED08\n"
+        "movt    r3, #0xE000\n"            /* r3 = 0xE000ED08 (SCB->VTOR) */
+        "str     r0, [r3]\n"               /* SCB->VTOR = APP_BASE */
+        "dsb\n"
+        "isb\n"
+        "msr     msp, r1\n"                /* 切到 APP 栈 */
+        "dsb\n"
+        "isb\n"
+        "bx      r2\n"                     /* 跳 APP */
+    );
 }
 
 static void clear_update_flag(void)
