@@ -156,7 +156,11 @@ static void jump_to_app(void)
     uint32_t pc = *(volatile uint32_t *)(APP_BASE + 4);
     __disable_irq();
     SCB->VTOR = APP_BASE;
+    __DSB();
+    __ISB();
     __set_MSP(sp);
+    __DSB();
+    __ISB();
     ((void (*)(void))pc)();
 }
 
@@ -215,6 +219,11 @@ int main(void)
             do_upgrade();                       /* 成功则跳转, 失败重试 */
         } else if (app_valid()) {
             boot_uart_puts("[boot] -> jump APP\r\n");
+            boot_uart_puts("  SP=");
+            boot_uart_hex32(*(volatile uint32_t *)APP_BASE);
+            boot_uart_puts(" PC=");
+            boot_uart_hex32(*(volatile uint32_t *)(APP_BASE + 4));
+            boot_uart_puts("\r\n");
             delay_ms(100);
             jump_to_app();
         } else {
