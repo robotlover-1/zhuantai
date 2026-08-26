@@ -155,12 +155,6 @@ static void jump_to_app(void)
     uint32_t sp = *(volatile uint32_t *)APP_BASE;
     uint32_t pc = *(volatile uint32_t *)(APP_BASE + 4);
     __disable_irq();
-    /* 原始 RCC 复位到 HSI (不依赖 HAL/SysTick, 不会卡死):
-     * 让 APP 从"正常上电复位"的时钟状态启动, 避免继承 bootloader 的 PLL */
-    RCC->CR |= RCC_CR_HSION;              /* 开 HSI */
-    RCC->CFGR = 0U;                       /* SYSCLK 切回 HSI, 分频=1 */
-    RCC->CR &= ~RCC_CR_PLLON;             /* 关 PLL */
-    while ((RCC->CR & RCC_CR_HSIRDY) == 0U) {}  /* 等 HSI 就绪 */
     SCB->VTOR = APP_BASE;
     __DSB();
     __ISB();
