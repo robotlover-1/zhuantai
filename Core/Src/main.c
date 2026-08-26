@@ -100,7 +100,7 @@ int main(void)
 
     SCB->VTOR = 0x08010000U;     /* APP 已搬移到 bootloader 之后 */
 
-    diag_uart_init(16000000);    /* 当前 APB1=16MHz, 尽早打印, 确认跳转进入 APP */
+    diag_uart_init(42000000);    /* main 开头继承 bootloader 的 168MHz, APB1=42MHz */
     diag_puts("\r\n[app] S\r\n");
 
     HAL_Init();
