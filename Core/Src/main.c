@@ -66,8 +66,9 @@ extern __IO uint32_t g_add_pulse_count;
 
 void SystemClock_Config(void);
 
-/* ===== 临时诊断: 早期裸 UART5 打印, 定位 APP 启动卡点 (定位后删除) ===== */
-static void diag_uart_init(void)
+/* ===== 临时诊断: 早期裸 UART5 打印, 定位 APP 启动卡点 (定位后删除) =====
+ * clk: 当前 APB1 频率, 根据调用点传入 (main开头=16MHz, 时钟配置后=42MHz) */
+static void diag_uart_init(uint32_t apb1_clk)
 {
     __HAL_RCC_GPIOC_CLK_ENABLE();
     __HAL_RCC_GPIOD_CLK_ENABLE();
@@ -79,8 +80,8 @@ static void diag_uart_init(void)
     g.Pin = GPIO_PIN_2; g.Pull = GPIO_PULLUP;
     HAL_GPIO_Init(GPIOD, &g);
     uint32_t bd = 16U * 115200U;
-    uint32_t mant = 42000000U / bd;
-    uint32_t frac = ((42000000U % bd) * 16U + bd / 2U) / bd;
+    uint32_t mant = apb1_clk / bd;
+    uint32_t frac = ((apb1_clk % bd) * 16U + bd / 2U) / bd;
     UART5->BRR = (mant << 4) | (frac & 0x0FU);
     UART5->CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
 }
@@ -99,10 +100,14 @@ int main(void)
 
     SCB->VTOR = 0x08010000U;     /* APP 已搬移到 bootloader 之后 */
 
+    diag_uart_init(16000000);    /* 当前 APB1=16MHz, 尽早打印, 确认跳转进入 APP */
+    diag_puts("\r\n[app] S\r\n");
+
     HAL_Init();
+    diag_puts("[app] hal ok\r\n");
     Stm32_Clock_Init();            /* 168MHz */
     delay_init(168);
-    diag_uart_init();
+    diag_uart_init(42000000);    /* 时钟已切换, APB1=42MHz, 重新按115200配 */
     diag_puts("\r\n[app] clk ok\r\n");
     rtc_init();                    /* RTC 从编译时间初始化 */
     diag_puts("[app] rtc ok\r\n");
