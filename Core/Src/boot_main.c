@@ -155,14 +155,14 @@ static void jump_to_app(void)
     uint32_t sp = *(volatile uint32_t *)APP_BASE;
     uint32_t pc = *(volatile uint32_t *)(APP_BASE + 4);
     __disable_irq();
-    HAL_RCC_DeInit();          /* 时钟恢复默认(HSI 16MHz), 让 APP 从正常复位状态启动 */
     SCB->VTOR = APP_BASE;
     __DSB();
     __ISB();
     __set_MSP(sp);
     __DSB();
     __ISB();
-    ((void (*)(void))pc)();
+    /* 内联 bx 直接分支, 不经过编译器生成的函数调用栈操作 */
+    __asm volatile ("bx %0" : : "r" (pc));
 }
 
 static void clear_update_flag(void)
