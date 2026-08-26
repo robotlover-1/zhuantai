@@ -24,7 +24,6 @@ u8 error = 0;
 
 int pulse_cut = 1000;
 int32_t pulse_compensate = 1000;
-u8 g_no_compensate = 0;        /* 0=补偿, 1=一步到位不补偿 */
 int32_t step_decel_2 = 100;
 int32_t step_accel_2 = 100;
 int level_speed = 0;
