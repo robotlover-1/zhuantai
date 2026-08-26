@@ -114,20 +114,6 @@ static void boot_uart_hex32(uint32_t v)
 }
 
 /* 打印复位原因 (RCC->CSR), 排查看门狗/连续复位 */
-static void print_reset_cause(void)
-{
-    uint32_t csr = RCC->CSR;
-    boot_uart_puts("[boot] RCC_CSR=");
-    boot_uart_hex32(csr);
-    boot_uart_puts("\r\n");
-    if (csr & RCC_CSR_IWDGRSTF) boot_uart_puts("[boot] reset: IWDG\r\n");
-    if (csr & RCC_CSR_WWDGRSTF) boot_uart_puts("[boot] reset: WWDG\r\n");
-    if (csr & RCC_CSR_SFTRSTF)  boot_uart_puts("[boot] reset: software\r\n");
-    if (csr & RCC_CSR_PINRSTF)  boot_uart_puts("[boot] reset: pin\r\n");
-    if (csr & RCC_CSR_PORRSTF)  boot_uart_puts("[boot] reset: POR\r\n");
-    __HAL_RCC_CLEAR_RESET_FLAGS();
-}
-
 /* ===== 全局 MSP：时钟使能 ===== */
 void HAL_MspInit(void)
 {
@@ -213,8 +199,6 @@ int main(void)
     boot_uart5_init(115200);
 
     boot_uart_puts("\r\nBOOT v1.3\r\n");
-    print_reset_cause();
-    boot_uart_puts("[boot] init ok\r\n");
 
     while (1) {
         uint32_t flag = *(volatile uint32_t *)UPDATE_FLAG_ADDR;
@@ -225,12 +209,7 @@ int main(void)
             boot_uart_puts("[boot] -> upgrade\r\n");
             do_upgrade();                       /* 成功则跳转, 失败重试 */
         } else if (app_valid()) {
-            boot_uart_puts("[boot] -> jump APP\r\n");
-            boot_uart_puts("  SP=");
-            boot_uart_hex32(*(volatile uint32_t *)APP_BASE);
-            boot_uart_puts(" PC=");
-            boot_uart_hex32(*(volatile uint32_t *)(APP_BASE + 4));
-            boot_uart_puts("\r\n");
+            boot_uart_puts("[boot] jump APP\r\n");
             delay_ms(100);
             jump_to_app();
         } else {

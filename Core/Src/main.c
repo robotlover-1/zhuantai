@@ -66,33 +66,6 @@ extern __IO uint32_t g_add_pulse_count;
 
 void SystemClock_Config(void);
 
-/* ===== 临时诊断: 早期裸 UART5 打印, 定位 APP 启动卡点 (定位后删除) =====
- * clk: 当前 APB1 频率, 根据调用点传入 (main开头=16MHz, 时钟配置后=42MHz) */
-static void diag_uart_init(uint32_t apb1_clk)
-{
-    __HAL_RCC_GPIOC_CLK_ENABLE();
-    __HAL_RCC_GPIOD_CLK_ENABLE();
-    __HAL_RCC_UART5_CLK_ENABLE();
-    GPIO_InitTypeDef g = {0};
-    g.Pin = GPIO_PIN_12; g.Mode = GPIO_MODE_AF_PP; g.Pull = GPIO_NOPULL;
-    g.Speed = GPIO_SPEED_FREQ_VERY_HIGH; g.Alternate = GPIO_AF8_UART5;
-    HAL_GPIO_Init(GPIOC, &g);
-    g.Pin = GPIO_PIN_2; g.Pull = GPIO_PULLUP;
-    HAL_GPIO_Init(GPIOD, &g);
-    uint32_t bd = 16U * 115200U;
-    uint32_t mant = apb1_clk / bd;
-    uint32_t frac = ((apb1_clk % bd) * 16U + bd / 2U) / bd;
-    UART5->BRR = (mant << 4) | (frac & 0x0FU);
-    UART5->CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
-}
-static void diag_puts(const char *s)
-{
-    while (*s) {
-        while (!(UART5->SR & USART_SR_TXE)) {}
-        UART5->DR = (uint8_t)*s++;
-    }
-}
-
 int main(void)
 {
     u8 len;
@@ -100,31 +73,21 @@ int main(void)
 
     SCB->VTOR = 0x08010000U;     /* APP 已搬移到 bootloader 之后 */
 
-    diag_uart_init(42000000);    /* main 开头继承 bootloader 的 168MHz, APB1=42MHz */
-    diag_puts("\r\n[app] S\r\n");
-
     HAL_Init();
-    diag_puts("[app] hal ok\r\n");
     Stm32_Clock_Init();            /* 168MHz */
     delay_init(168);
-    diag_uart_init(42000000);    /* 时钟已切换, APB1=42MHz, 重新按115200配 */
-    diag_puts("\r\n[app] clk ok\r\n");
     rtc_init();                    /* RTC 从编译时间初始化 */
-    diag_puts("[app] rtc ok\r\n");
+
     uart4_init(9600);              /* UART4 上位机 */
-    diag_puts("[app] uart4 ok\r\n");
     USART_RX_STA_4 = 0;
     for (i = 0; i < USART_REC_LEN_4; i++) USART_RX_BUF_4[i] = 0;
 
     step_motor_init();             /* GPIO 初始化 */
-    diag_puts("[app] motor init ok\r\n");
     atim_timx_pwm_chy_init(0xFFFF, 84 - 1);  /* TIM1_CH1 步进脉冲, 168M/84=2M 与F1一致 */
     TIM5_Init(5000-1, 8400-1);    /* 4Hz 超时 */
     TIM4_Init(5000-1, 16800-1);   /* 2Hz 用时计时 */
-    diag_puts("[app] timers ok\r\n");
 
     uart_init(115200);            /* USART1 调试 */
-    diag_puts("[app] uart ok\r\n");
 
     __enable_irq();
     USART_RX_STA = 0;

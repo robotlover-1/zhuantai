@@ -170,35 +170,6 @@ void SystemInit(void)
     SCB->CPACR |= ((3UL << 10*2)|(3UL << 11*2));  /* set CP10 and CP11 Full Access */
   #endif
 
-  /* ===== 临时诊断: SystemInit 入口裸 UART5 标记 (定位跳转是否到达 APP) =====
-   * 时钟假定 APB1=42MHz (APP 继承 bootloader 168MHz). bootloader 自身在 4MHz 下会乱码, 忽略即可 */
-  {
-    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOCEN | RCC_AHB1ENR_GPIODEN;
-    RCC->APB1ENR |= RCC_APB1ENR_UART5EN;
-    GPIOC->MODER  = (GPIOC->MODER & ~(3UL << 24)) | (2UL << 24);   /* PC12 AF */
-    GPIOC->OSPEEDR |= (3UL << 24);
-    GPIOC->OTYPER &= ~(1UL << 12);
-    GPIOC->AFR[1] = (GPIOC->AFR[1] & ~(0xFUL << 16)) | (8UL << 16);/* AF8 UART5_TX */
-    GPIOD->MODER  = (GPIOD->MODER & ~(3UL << 4)) | (2UL << 4);     /* PD2 AF */
-    GPIOD->OSPEEDR |= (3UL << 4);
-    GPIOD->PUPDR  = (GPIOD->PUPDR & ~(3UL << 4)) | (1UL << 4);     /* 上拉 */
-    GPIOD->AFR[0] = (GPIOD->AFR[0] & ~(0xFUL << 8)) | (8UL << 8);  /* AF8 UART5_RX */
-    {
-      uint32_t bd = 16U * 115200U;
-      uint32_t mant = 42000000U / bd;
-      uint32_t frac = ((42000000U % bd) * 16U + bd / 2U) / bd;
-      UART5->BRR = (mant << 4) | (frac & 0x0FU);
-    }
-    UART5->CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
-    {
-      const char *p = "\r\n[sys] 1\r\n";
-      while (*p) {
-        while (!(UART5->SR & USART_SR_TXE)) {}
-        UART5->DR = (uint8_t)*p++;
-      }
-    }
-  }
-
 #if defined (DATA_IN_ExtSRAM) || defined (DATA_IN_ExtSDRAM)
   SystemInit_ExtMemCtl(); 
 #endif /* DATA_IN_ExtSRAM || DATA_IN_ExtSDRAM */
