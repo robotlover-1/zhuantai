@@ -135,6 +135,10 @@ static void do_upgrade(void)
     ctx.target_addr = APP_BASE;
     ctx.max_size    = APP_END - APP_BASE;
     int r = upgrade_receive(&ctx);
+    if (r == 0)
+        printf("BOOT: received %d bytes\r\n", (int)ctx.received);
+    else
+        printf("BOOT: receive error %d\r\n", r);
     if (r == 0 && app_valid()) {       /* 裸协议无校验, 写完后必须验证向量表 */
         clear_update_flag();
         boot_uart_puts("\r\nBOOT: upgrade OK, jumping...\r\n");
