@@ -102,13 +102,13 @@ int main(void)
      * DM9000 初始化失败只打印日志, 不影响串口模式 */
     eth_init();
 
-    /* 打印启动信息 */
-    {
+    /* 打印启动信息 (已注释: 静音 banner 与 total_cycles 回显, 参数表由 param_load_all 输出) */
+    /* {
         char ts[32];
         rtc_get_time_str(ts, sizeof(ts));
         printf("[%s] F1-Stepper V2 on F407 ready\r\n", ts);
         printf("total_cycles: %d\r\n", total_cycles);
-    }
+    } */
 
     while (1)
     {
