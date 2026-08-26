@@ -117,7 +117,7 @@ static void boot_uart_hex32(uint32_t v)
 static void print_reset_cause(void)
 {
     uint32_t csr = RCC->CSR;
-    boot_uart_puts("[boot] RCC_CSR=0x");
+    boot_uart_puts("[boot] RCC_CSR=");
     boot_uart_hex32(csr);
     boot_uart_puts("\r\n");
     if (csr & RCC_CSR_IWDGRSTF) boot_uart_puts("[boot] reset: IWDG\r\n");
@@ -155,12 +155,23 @@ static void jump_to_app(void)
     uint32_t sp = *(volatile uint32_t *)APP_BASE;
     uint32_t pc = *(volatile uint32_t *)(APP_BASE + 4);
     __disable_irq();
+    /* 停止 SysTick, 清除全部 NVIC 挂起, 避免残留中断进入 APP */
+    SysTick->CTRL = 0;
+    SysTick->LOAD = 0;
+    SysTick->VAL  = 0;
+    for (uint32_t i = 0; i < 8U; i++) {
+        NVIC->ICER[i] = 0xFFFFFFFFU;
+        NVIC->ICPR[i] = 0xFFFFFFFFU;
+    }
+    /* 注: 不做 HAL_RCC_DeInit, 它在 PRIMASK=1 且 SysTick 停时会因 HAL_GetTick 卡死 */
     SCB->VTOR = APP_BASE;
     __DSB();
     __ISB();
+    __set_CONTROL(0);
     __set_MSP(sp);
     __DSB();
     __ISB();
+    __enable_irq();   /* 恢复 PRIMASK, 与正常复位一致 (NVIC已清空, 安全) */
     /* 内联 bx 直接分支, 不经过编译器生成的函数调用栈操作 */
     __asm volatile ("bx %0" : : "r" (pc));
 }
