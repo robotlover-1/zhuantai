@@ -39,39 +39,33 @@ static void boot_clock_init(void)
 }
 
 /* ===== UART5 (PC12=TX, PD2=RX) 115200, 轮询收发, 不开RX中断 =====
- * 直接用 HAL_UART_Init (与 APP usart.c 一致, 验证过能稳定输出) */
-UART_HandleTypeDef UART5_Handler;
-
+ * 裸寄存器初始化 (不依赖 hal_uart/hal_dma, bootloader 最简) */
 static void boot_uart5_init(uint32_t baud)
 {
-    UART5_Handler.Instance = UART5;
-    UART5_Handler.Init.BaudRate = baud;
-    UART5_Handler.Init.WordLength = UART_WORDLENGTH_8B;
-    UART5_Handler.Init.StopBits = UART_STOPBITS_1;
-    UART5_Handler.Init.Parity = UART_PARITY_NONE;
-    UART5_Handler.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-    UART5_Handler.Init.Mode = UART_MODE_TX_RX;
-    UART5_Handler.Init.OverSampling = UART_OVERSAMPLING_16;
-    HAL_UART_Init(&UART5_Handler);
-}
-
-void HAL_UART_MspInit(UART_HandleTypeDef *huart)
-{
     GPIO_InitTypeDef g = {0};
-    if (huart->Instance == UART5) {
-        __HAL_RCC_GPIOC_CLK_ENABLE();
-        __HAL_RCC_GPIOD_CLK_ENABLE();
-        __HAL_RCC_UART5_CLK_ENABLE();
-        g.Pin = GPIO_PIN_12;                 /* PC12: TX, AF8 */
-        g.Mode = GPIO_MODE_AF_PP;
-        g.Pull = GPIO_NOPULL;
-        g.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-        g.Alternate = GPIO_AF8_UART5;
-        HAL_GPIO_Init(GPIOC, &g);
-        g.Pin = GPIO_PIN_2;                  /* PD2: RX, AF8 */
-        g.Pull = GPIO_PULLUP;
-        HAL_GPIO_Init(GPIOD, &g);
-    }
+
+    __HAL_RCC_GPIOC_CLK_ENABLE();
+    __HAL_RCC_GPIOD_CLK_ENABLE();
+    __HAL_RCC_UART5_CLK_ENABLE();
+
+    g.Pin = GPIO_PIN_12;                 /* PC12: TX, AF8 */
+    g.Mode = GPIO_MODE_AF_PP;
+    g.Pull = GPIO_NOPULL;
+    g.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    g.Alternate = GPIO_AF8_UART5;
+    HAL_GPIO_Init(GPIOC, &g);
+
+    g.Pin = GPIO_PIN_2;                  /* PD2: RX, AF8 */
+    g.Pull = GPIO_PULLUP;
+    HAL_GPIO_Init(GPIOD, &g);
+
+    /* 波特率: UART5 挂 APB1 = 42MHz (注意不是84MHz, 只有定时器才×2, UART不翻倍)
+     * BRR: 高12位 mantissa + 低4位 fraction, 计算同 HAL */
+    uint32_t bauddiv = 16U * baud;
+    uint32_t mantissa = 42000000U / bauddiv;
+    uint32_t fraction = ((42000000U % bauddiv) * 16U + bauddiv / 2U) / bauddiv;
+    UART5->BRR = (mantissa << 4) | (fraction & 0x0FU);
+    UART5->CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
 }
 
 /* ===== 底层 UART5 原始收发 ===== */
