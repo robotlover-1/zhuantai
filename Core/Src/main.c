@@ -191,6 +191,10 @@ int main(void)
         }
 
         delay_ms(50);
+
+        /* 临时诊断: 心跳 (每~5秒), 确认主循环在跑 */
+        static uint32_t hb = 0;
+        if ((++hb % 100) == 0) printf("[hb] alive\r\n");
     }
 }
 
