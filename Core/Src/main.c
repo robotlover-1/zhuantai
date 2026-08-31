@@ -96,10 +96,10 @@ int main(void)
 
     write_update_flag(0);         /* APP正常启动, 清除固件升级标志 (对齐F1, 防复位误进升级) */
 
-    /* 以太网初始化 (DM9000 + LwIP + TCP Server)
-     * 放在 param_load_all 之后: 使 g_eth_ip 等使用 Flash 中已加载的网络参数;
-     * DM9000 初始化失败只打印日志, 不影响串口模式 */
+    /* 以太网初始化 (DM9000 + LwIP + TCP Server) — 临时禁用: DM9000/PHY 链路待真机确认, 阻塞主循环 */
+#if 0
     eth_init();
+#endif
 
     /* 打印启动信息 (已注释: 静音 banner 与 total_cycles 回显, 参数表由 param_load_all 输出) */
     /* {
@@ -129,7 +129,8 @@ int main(void)
             cmd_dispatch(USART_RX_BUF, len);
         }
 
-        /* ---- 以太网处理 ---- */
+        /* ---- 以太网处理 (临时禁用) ---- */
+#if 0
         /* 1. LwIP 协议栈周期处理 (收包、定时器、TCP 发送) */
         MX_LWIP_Process();
 
@@ -147,6 +148,7 @@ int main(void)
                 for (i = 0; i < ETH_RX_BUF_SIZE; i++) g_eth_rx_buf[i] = 0;   /* 清理 */
             }
         }
+#endif
 
         /* 3. 硬件 IO 检测 (光耦输入: 24V施加=LOW) */
         if (HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_6) == 0) {      /* PF6: 复位 (LOW有效) */
