@@ -192,9 +192,14 @@ int main(void)
 
         delay_ms(50);
 
-        /* 临时诊断: 心跳 (每~5秒), 确认主循环在跑 */
+        /* 临时诊断: 心跳 + RX 状态 (每~5秒) */
         static uint32_t hb = 0;
-        if ((++hb % 100) == 0) printf("[hb] alive\r\n");
+        if ((++hb % 100) == 0) {
+            printf("[hb] alive");
+            if (UART5->SR & USART_SR_RXNE) printf(" RXNE=1");
+            if (UART5->SR & USART_SR_ORE)  printf(" ORE=1");
+            printf("\r\n");
+        }
     }
 }
 
