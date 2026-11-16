@@ -1,4 +1,4 @@
-test\err.o: ../Middlewares/LwIP/src/api/err.c
+test\err.o: ..\Middlewares\LwIP\src\api\err.c
 test\err.o: ../Middlewares/LwIP/src/include/lwip/err.h
 test\err.o: ../Middlewares/LwIP/src/include/lwip/opt.h
 test\err.o: ../Core/Inc/lwipopts.h
@@ -6,6 +6,7 @@ test\err.o: ../Middlewares/LwIP/src/include/lwip/debug.h
 test\err.o: ../Middlewares/LwIP/src/include/lwip/arch.h
 test\err.o: ../Core/Inc/arch/cc.h
 test\err.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+test\err.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
 test\err.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 test\err.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
 test\err.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h

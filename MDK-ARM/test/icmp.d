@@ -1,10 +1,11 @@
-test\icmp.o: ../Middlewares/LwIP/src/core/ipv4/icmp.c
+test\icmp.o: ..\Middlewares\LwIP\src\core\ipv4\icmp.c
 test\icmp.o: ../Middlewares/LwIP/src/include/lwip/opt.h
 test\icmp.o: ../Core/Inc/lwipopts.h
 test\icmp.o: ../Middlewares/LwIP/src/include/lwip/debug.h
 test\icmp.o: ../Middlewares/LwIP/src/include/lwip/arch.h
 test\icmp.o: ../Core/Inc/arch/cc.h
 test\icmp.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+test\icmp.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
 test\icmp.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 test\icmp.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
 test\icmp.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
@@ -35,4 +36,3 @@ test\icmp.o: ../Middlewares/LwIP/src/include/lwip/ip4.h
 test\icmp.o: ../Middlewares/LwIP/src/include/lwip/prot/ip4.h
 test\icmp.o: ../Middlewares/LwIP/src/include/lwip/ip6.h
 test\icmp.o: ../Middlewares/LwIP/src/include/lwip/prot/ip.h
-test\icmp.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h

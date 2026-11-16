@@ -45,3 +45,4 @@ test\main.o: ../Core/Inc/step_motor.h
 test\main.o: ../Core/Inc/flash_param.h
 test\main.o: ../Core/Inc/cmd_handler.h
 test\main.o: ../Core/Inc/rtc.h
+test\main.o: ../Core/Inc/eth.h

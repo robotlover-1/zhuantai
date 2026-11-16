@@ -1,10 +1,11 @@
-test\timeouts.o: ../Middlewares/LwIP/src/core/timeouts.c
+test\timeouts.o: ..\Middlewares\LwIP\src\core\timeouts.c
 test\timeouts.o: ../Middlewares/LwIP/src/include/lwip/opt.h
 test\timeouts.o: ../Core/Inc/lwipopts.h
 test\timeouts.o: ../Middlewares/LwIP/src/include/lwip/debug.h
 test\timeouts.o: ../Middlewares/LwIP/src/include/lwip/arch.h
 test\timeouts.o: ../Core/Inc/arch/cc.h
 test\timeouts.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+test\timeouts.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
 test\timeouts.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 test\timeouts.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
 test\timeouts.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h

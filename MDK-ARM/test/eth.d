@@ -1,4 +1,4 @@
-test\eth.o: ../Core/Src/eth.c
+test\eth.o: ..\Core\Src\eth.c
 test\eth.o: ../Core/Inc/eth.h
 test\eth.o: ../Core/Inc/sys.h
 test\eth.o: ../Drivers/CMSIS/Device/ST/STM32F4xx/Include/stm32f4xx.h
@@ -36,6 +36,7 @@ test\eth.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h
 test\eth.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h
 test\eth.o: ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_usart.h
 test\eth.o: ../Core/Inc/delay.h
+test\eth.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 test\eth.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
 test\eth.o: ../Middlewares/LwIP/src/include/lwip/init.h
 test\eth.o: ../Middlewares/LwIP/src/include/lwip/opt.h
@@ -43,7 +44,6 @@ test\eth.o: ../Core/Inc/lwipopts.h
 test\eth.o: ../Middlewares/LwIP/src/include/lwip/debug.h
 test\eth.o: ../Middlewares/LwIP/src/include/lwip/arch.h
 test\eth.o: ../Core/Inc/arch/cc.h
-test\eth.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 test\eth.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
 test\eth.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\inttypes.h
 test\eth.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\limits.h
@@ -77,3 +77,6 @@ test\eth.o: ../Middlewares/LwIP/src/include/lwip/timeouts.h
 test\eth.o: ../Middlewares/LwIP/src/include/netif/ethernet.h
 test\eth.o: ../Middlewares/LwIP/src/include/lwip/prot/ethernet.h
 test\eth.o: ../Middlewares/LwIP/src/include/lwip/prot/ieee.h
+test\eth.o: ../Middlewares/LwIP/src/include/netif/etharp.h
+test\eth.o: ../Middlewares/LwIP/src/include/lwip/etharp.h
+test\eth.o: ../Middlewares/LwIP/src/include/lwip/prot/etharp.h

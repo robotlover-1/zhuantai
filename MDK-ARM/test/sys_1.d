@@ -1,2 +1,16 @@
-test\sys_1.o: ../Middlewares/LwIP/src/core/sys.c
+test\sys_1.o: ..\Middlewares\LwIP\src\core\sys.c
 test\sys_1.o: ../Middlewares/LwIP/src/include/lwip/opt.h
+test\sys_1.o: ../Core/Inc/lwipopts.h
+test\sys_1.o: ../Middlewares/LwIP/src/include/lwip/debug.h
+test\sys_1.o: ../Middlewares/LwIP/src/include/lwip/arch.h
+test\sys_1.o: ../Core/Inc/arch/cc.h
+test\sys_1.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+test\sys_1.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+test\sys_1.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+test\sys_1.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+test\sys_1.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
+test\sys_1.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\inttypes.h
+test\sys_1.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\limits.h
+test\sys_1.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\ctype.h
+test\sys_1.o: ../Middlewares/LwIP/src/include/lwip/opt.h
+test\sys_1.o: ../Middlewares/LwIP/src/include/lwip/sys.h

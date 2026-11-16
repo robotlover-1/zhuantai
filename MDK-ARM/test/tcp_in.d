@@ -1,10 +1,11 @@
-test\tcp_in.o: ../Middlewares/LwIP/src/core/tcp_in.c
+test\tcp_in.o: ..\Middlewares\LwIP\src\core\tcp_in.c
 test\tcp_in.o: ../Middlewares/LwIP/src/include/lwip/opt.h
 test\tcp_in.o: ../Core/Inc/lwipopts.h
 test\tcp_in.o: ../Middlewares/LwIP/src/include/lwip/debug.h
 test\tcp_in.o: ../Middlewares/LwIP/src/include/lwip/arch.h
 test\tcp_in.o: ../Core/Inc/arch/cc.h
 test\tcp_in.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+test\tcp_in.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
 test\tcp_in.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 test\tcp_in.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
 test\tcp_in.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
@@ -40,4 +41,3 @@ test\tcp_in.o: ../Middlewares/LwIP/src/include/lwip/prot/icmp.h
 test\tcp_in.o: ../Middlewares/LwIP/src/include/lwip/prot/tcp.h
 test\tcp_in.o: ../Middlewares/LwIP/src/include/lwip/inet_chksum.h
 test\tcp_in.o: ../Middlewares/LwIP/src/include/lwip/nd6.h
-test\tcp_in.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h

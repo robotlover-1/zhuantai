@@ -1,10 +1,11 @@
-test\ip4.o: ../Middlewares/LwIP/src/core/ipv4/ip4.c
+test\ip4.o: ..\Middlewares\LwIP\src\core\ipv4\ip4.c
 test\ip4.o: ../Middlewares/LwIP/src/include/lwip/opt.h
 test\ip4.o: ../Core/Inc/lwipopts.h
 test\ip4.o: ../Middlewares/LwIP/src/include/lwip/debug.h
 test\ip4.o: ../Middlewares/LwIP/src/include/lwip/arch.h
 test\ip4.o: ../Core/Inc/arch/cc.h
 test\ip4.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+test\ip4.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
 test\ip4.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 test\ip4.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
 test\ip4.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
@@ -45,4 +46,3 @@ test\ip4.o: ../Middlewares/LwIP/src/include/lwip/tcpbase.h
 test\ip4.o: ../Middlewares/LwIP/src/include/lwip/prot/tcp.h
 test\ip4.o: ../Middlewares/LwIP/src/include/lwip/autoip.h
 test\ip4.o: ../Middlewares/LwIP/src/include/lwip/prot/iana.h
-test\ip4.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h

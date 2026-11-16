@@ -24,33 +24,7 @@ void uart4_init(u32 bound)
     HAL_UART_Receive_IT(&UART4_Handler, (u8 *)aRxBuffer_4, RXBUFFERSIZE_4);
 }
 
-void HAL_UART_MspInit(UART_HandleTypeDef *huart)
-{
-    GPIO_InitTypeDef GPIO_Initure = {0};
-
-    if (huart->Instance == UART4)
-    {
-        __HAL_RCC_GPIOC_CLK_ENABLE();
-        __HAL_RCC_UART4_CLK_ENABLE();
-
-        /* UART4_TX: PC10 */
-        GPIO_Initure.Pin = GPIO_PIN_10;
-        GPIO_Initure.Mode = GPIO_MODE_AF_PP;
-        GPIO_Initure.Pull = GPIO_PULLUP;
-        GPIO_Initure.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-        GPIO_Initure.Alternate = GPIO_AF8_UART4;
-        HAL_GPIO_Init(GPIOC, &GPIO_Initure);
-
-        /* UART4_RX: PC11 */
-        GPIO_Initure.Pin = GPIO_PIN_11;
-        HAL_GPIO_Init(GPIOC, &GPIO_Initure);
-
-#if EN_UART4_RX
-        HAL_NVIC_SetPriority(UART4_IRQn, 0, 1);
-        HAL_NVIC_EnableIRQ(UART4_IRQn);
-#endif
-    }
-}
+/* HAL_UART_MspInit 已统一迁移至 usart.c (同时处理 USART1 + UART4) */
 
 void UART4_IRQHandler(void)
 {
@@ -83,6 +57,10 @@ void UART4_IRQHandler(void)
                 }
             }
         }
+    }
+    /* 清除可能的错误标志（ORE/NE/FE），防止中断阻塞 */
+    if (UART4->SR & (USART_SR_ORE | USART_SR_FE | USART_SR_NE)) {
+        (void)UART4->DR;
     }
     HAL_UART_IRQHandler(&UART4_Handler);
     HAL_UART_Receive_IT(&UART4_Handler, (u8 *)aRxBuffer_4, RXBUFFERSIZE_4);

@@ -1,10 +1,11 @@
-test\mem.o: ../Middlewares/LwIP/src/core/mem.c
+test\mem.o: ..\Middlewares\LwIP\src\core\mem.c
 test\mem.o: ../Middlewares/LwIP/src/include/lwip/opt.h
 test\mem.o: ../Core/Inc/lwipopts.h
 test\mem.o: ../Middlewares/LwIP/src/include/lwip/debug.h
 test\mem.o: ../Middlewares/LwIP/src/include/lwip/arch.h
 test\mem.o: ../Core/Inc/arch/cc.h
 test\mem.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+test\mem.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
 test\mem.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 test\mem.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
 test\mem.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
@@ -23,4 +24,3 @@ test\mem.o: ../Middlewares/LwIP/src/include/lwip/priv/memp_priv.h
 test\mem.o: ../Middlewares/LwIP/src/include/lwip/priv/mem_priv.h
 test\mem.o: ../Middlewares/LwIP/src/include/lwip/stats.h
 test\mem.o: ../Middlewares/LwIP/src/include/lwip/err.h
-test\mem.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h

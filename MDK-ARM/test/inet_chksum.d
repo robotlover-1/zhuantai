@@ -1,10 +1,11 @@
-test\inet_chksum.o: ../Middlewares/LwIP/src/core/inet_chksum.c
+test\inet_chksum.o: ..\Middlewares\LwIP\src\core\inet_chksum.c
 test\inet_chksum.o: ../Middlewares/LwIP/src/include/lwip/opt.h
 test\inet_chksum.o: ../Core/Inc/lwipopts.h
 test\inet_chksum.o: ../Middlewares/LwIP/src/include/lwip/debug.h
 test\inet_chksum.o: ../Middlewares/LwIP/src/include/lwip/arch.h
 test\inet_chksum.o: ../Core/Inc/arch/cc.h
 test\inet_chksum.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+test\inet_chksum.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
 test\inet_chksum.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 test\inet_chksum.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
 test\inet_chksum.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
@@ -19,4 +20,3 @@ test\inet_chksum.o: ../Middlewares/LwIP/src/include/lwip/ip_addr.h
 test\inet_chksum.o: ../Middlewares/LwIP/src/include/lwip/def.h
 test\inet_chksum.o: ../Middlewares/LwIP/src/include/lwip/ip4_addr.h
 test\inet_chksum.o: ../Middlewares/LwIP/src/include/lwip/ip6_addr.h
-test\inet_chksum.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h

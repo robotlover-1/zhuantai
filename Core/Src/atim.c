@@ -6,6 +6,8 @@
 TIM_HandleTypeDef g_timx_pwm_chy_handle;
 TIM_OC_InitTypeDef g_timx_oc_pwm_chy = {0};
 
+extern u8 error;   /* 报警标志 (定义于 main.c) */
+
 /* TIM1_CH1 OC 初始化：步进脉冲输出 (PA8) */
 void atim_timx_pwm_chy_init(uint16_t arr, uint16_t psc) {
   g_timx_pwm_chy_handle.Instance = ATIM_TIMX_PWM;
@@ -101,6 +103,16 @@ void HAL_TIM_Base_MspInit(TIM_HandleTypeDef *htim) {
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   if (htim->Instance == TIM5) {
     time_out++;
+    /* 运动超时报警(对齐F1: 2000次×10ms≈20s; F407为2Hz/0.5s, 阈值40=20s) */
+    if (time_out > 40) {
+      error = 1;
+      HAL_TIM_Base_Stop_IT(&TIM5_Handler);
+      time_out = 0;
+      // printf("EL\r\n");          /* 超时报警打印已注释, error=1 与报警脉冲仍生效 */
+      alarm_set(1);          /* 报警输出低电平 (NMOS 导通, 匹配 IO 输出定义) */
+      delay_ms(50);          /* F1 原样: 50ms 报警脉冲 */
+      alarm_set(0);
+    }
   } else if (htim->Instance == TIM4) {
     time_run++;
   }

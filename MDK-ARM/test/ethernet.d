@@ -1,10 +1,11 @@
-test\ethernet.o: ../Middlewares/LwIP/src/netif/ethernet.c
+test\ethernet.o: ..\Middlewares\LwIP\src\netif\ethernet.c
 test\ethernet.o: ../Middlewares/LwIP/src/include/lwip/opt.h
 test\ethernet.o: ../Core/Inc/lwipopts.h
 test\ethernet.o: ../Middlewares/LwIP/src/include/lwip/debug.h
 test\ethernet.o: ../Middlewares/LwIP/src/include/lwip/arch.h
 test\ethernet.o: ../Core/Inc/arch/cc.h
 test\ethernet.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+test\ethernet.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
 test\ethernet.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 test\ethernet.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
 test\ethernet.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
@@ -38,5 +39,4 @@ test\ethernet.o: ../Middlewares/LwIP/src/include/lwip/ip.h
 test\ethernet.o: ../Middlewares/LwIP/src/include/lwip/ip6.h
 test\ethernet.o: ../Middlewares/LwIP/src/include/lwip/prot/ip.h
 test\ethernet.o: ../Middlewares/LwIP/src/include/lwip/snmp.h
-test\ethernet.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
 test\ethernet.o: ../Middlewares/LwIP/src/include/netif/ppp/ppp_opts.h

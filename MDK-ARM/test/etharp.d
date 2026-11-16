@@ -1,10 +1,11 @@
-test\etharp.o: ../Middlewares/LwIP/src/core/ipv4/etharp.c
+test\etharp.o: ..\Middlewares\LwIP\src\core\ipv4\etharp.c
 test\etharp.o: ../Middlewares/LwIP/src/include/lwip/opt.h
 test\etharp.o: ../Core/Inc/lwipopts.h
 test\etharp.o: ../Middlewares/LwIP/src/include/lwip/debug.h
 test\etharp.o: ../Middlewares/LwIP/src/include/lwip/arch.h
 test\etharp.o: ../Core/Inc/arch/cc.h
 test\etharp.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+test\etharp.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
 test\etharp.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 test\etharp.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
 test\etharp.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
@@ -38,4 +39,3 @@ test\etharp.o: ../Middlewares/LwIP/src/include/lwip/dhcp.h
 test\etharp.o: ../Middlewares/LwIP/src/include/lwip/autoip.h
 test\etharp.o: ../Middlewares/LwIP/src/include/lwip/prot/iana.h
 test\etharp.o: ../Middlewares/LwIP/src/include/netif/ethernet.h
-test\etharp.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h

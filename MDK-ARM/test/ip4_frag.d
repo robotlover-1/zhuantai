@@ -1,10 +1,11 @@
-test\ip4_frag.o: ../Middlewares/LwIP/src/core/ipv4/ip4_frag.c
+test\ip4_frag.o: ..\Middlewares\LwIP\src\core\ipv4\ip4_frag.c
 test\ip4_frag.o: ../Middlewares/LwIP/src/include/lwip/opt.h
 test\ip4_frag.o: ../Core/Inc/lwipopts.h
 test\ip4_frag.o: ../Middlewares/LwIP/src/include/lwip/debug.h
 test\ip4_frag.o: ../Middlewares/LwIP/src/include/lwip/arch.h
 test\ip4_frag.o: ../Core/Inc/arch/cc.h
 test\ip4_frag.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+test\ip4_frag.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
 test\ip4_frag.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 test\ip4_frag.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
 test\ip4_frag.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
@@ -36,4 +37,3 @@ test\ip4_frag.o: ../Middlewares/LwIP/src/include/lwip/prot/ip.h
 test\ip4_frag.o: ../Middlewares/LwIP/src/include/lwip/inet_chksum.h
 test\ip4_frag.o: ../Middlewares/LwIP/src/include/lwip/icmp.h
 test\ip4_frag.o: ../Middlewares/LwIP/src/include/lwip/prot/icmp.h
-test\ip4_frag.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h

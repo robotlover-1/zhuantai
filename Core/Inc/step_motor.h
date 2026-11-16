@@ -71,6 +71,13 @@
                   }while(0)
 
 /******************************************************************************************/
+/* F407 步进延迟基准值
+ * STEP_DELAY_INIT: 初始脉冲延迟 (F1=2666@2MHz, F4=2666@2MHz, 物理等效约4.5rpm)
+ * STEP_SPEED_REF:  速度公式基准值 (F1/F4 通用2666, 对应S曲线加速度校准点)
+ */
+#define STEP_DELAY_INIT       2666
+#define STEP_SPEED_REF         2666
+
 /* F1 步进电机参数结构体 */
 typedef struct
 {
@@ -160,4 +167,5 @@ void motor_run_all(int loop, int station_to);
 u8 CheckRtrig(uint16_t GPIO_Pin);
 u8 CheckPtrig(uint16_t GPIO_Pin);
 int read_hal(void);   /* 霍尔读取 (调试用) */
+void alarm_set(uint8_t on);   /* 报警信号输出 (PC2, 24V输出2, 开漏): on=置高经外部上拉输出24V */
 #endif

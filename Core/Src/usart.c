@@ -1,18 +1,15 @@
 #include "sys.h"
 #include "usart.h"
+#include "eth.h"
 #if SYSTEM_SUPPORT_OS
 #include "includes.h"
 #endif
 
+/* ---- semihosting stubs ---- */
 #if 1
 #pragma import(__use_no_semihosting)
-/* __stdout is provided by the C library (stdio_streams.o);
- * we only override fputc() for USART1 output. */
-
-/* ---- semihosting stubs (required by --no_semihosting) ---- */
 void _sys_exit(int x)       { x = x; }
 void _ttywrch(int ch)       { (void)ch; }
-/* Use $Sub$$ prefix so ARM linker uses our function instead of library's semihosting version */
 int  $Sub$$_sys_open(const char *name, int mode, int len) { (void)name; (void)mode; (void)len; return -1; }
 int  $Sub$$_sys_close(int fh)     { (void)fh; return -1; }
 int  $Sub$$_sys_write(int fh, const unsigned char *buf, unsigned len, int mode)  { (void)fh; (void)buf; (void)mode; return (int)len; }
@@ -24,14 +21,17 @@ long $Sub$$_sys_flen(int fh)      { (void)fh; return 0; }
 int fputc(int ch, FILE *f)
 {
     uint32_t timeout = 500000;
-    while (!(USART1->SR & USART_SR_TC))
+    while (!(UART5->SR & USART_SR_TC))
     {
-        if (--timeout == 0)
-        {
-            break;
-        }
+        if (--timeout == 0) break;
     }
-    USART1->DR = (uint8_t)ch;
+    UART5->DR = (uint8_t)ch;
+
+    /* 如果当前命令来源是 TCP, 同步发送到 TCP 客户端 */
+    if (g_cmd_src == CMD_SRC_TCP && g_tcp_client_connected)
+    {
+        eth_tcp_send_byte((uint8_t)ch);
+    }
     return ch;
 }
 #endif
@@ -45,96 +45,58 @@ UART_HandleTypeDef UART5_Handler;
 
 void uart_init(u32 bound)
 {
-    u32 temp;
-    u16 mantissa;
-    u16 fraction;
+    /* UART5: PC12(TX), PD2(RX), APB1=42MHz, 115200调试 */
+    UART5_Handler.Instance = UART5;
+    UART5_Handler.Init.BaudRate = bound;
+    UART5_Handler.Init.WordLength = UART_WORDLENGTH_8B;
+    UART5_Handler.Init.StopBits = UART_STOPBITS_1;
+    UART5_Handler.Init.Parity = UART_PARITY_NONE;
+    UART5_Handler.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+    UART5_Handler.Init.Mode = UART_MODE_TX_RX;
+    HAL_UART_Init(&UART5_Handler);
 
-    /* USART1: PA9(TX), PA10(RX), APB2=84MHz */
-    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
-    RCC->APB2ENR |= RCC_APB2ENR_USART1EN;
+    /* 等待 TE 就绪，发送测试字节稳定 TX */
+    while (!(UART5->SR & USART_SR_TXE)) {}
+    UART5->DR = 0x0A;
+    while (!(UART5->SR & USART_SR_TC)) {}
 
-    /* PA9(TX) AF_PP AF7 */
-    GPIOA->MODER   &= ~(3 << 18);  GPIOA->MODER   |= (2 << 18);
-    GPIOA->OTYPER  &= ~(1 << 9);
-    GPIOA->OSPEEDR |=  (3 << 18);
-    GPIOA->PUPDR   &= ~(3 << 18);  GPIOA->PUPDR   |= (1 << 18);
-    GPIOA->AFR[1]  &= ~(0xF << 4); GPIOA->AFR[1]  |= (7 << 4);
+    /* 清除上电噪声 */
+    if (UART5->SR & USART_SR_RXNE) (void)UART5->DR;
 
-    /* PA10(RX) AF_PP + PULLUP */
-    GPIOA->MODER   &= ~(3 << 20);  GPIOA->MODER   |= (2 << 20);
-    GPIOA->OTYPER  &= ~(1 << 10);
-    GPIOA->OSPEEDR |=  (3 << 20);
-    GPIOA->PUPDR   &= ~(3 << 20);  GPIOA->PUPDR   |= (1 << 20);
-    GPIOA->AFR[1]  &= ~(0xF << 8); GPIOA->AFR[1]  |= (7 << 8);
-
-    /* 波特率 = APB2(84MHz) / (16 * bound) */
-    temp = 84000000 / (bound * 16);
-    mantissa = (u16)(temp);
-    fraction = (u16)(84000000 % (bound * 16) * 16 / (bound * 16) + 0.5);
-    USART1->BRR = (mantissa << 4) | (fraction & 0xF);
-
-    USART1->CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
-    USART1->DR = 0x0A;
-    while (!(USART1->SR & USART_SR_TC)) {}
-    if (USART1->SR & USART_SR_RXNE) (void)USART1->DR;
-    USART1->CR1 |= USART_CR1_RXNEIE;
-    HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
-    HAL_NVIC_EnableIRQ(USART1_IRQn);
-
-    /* 保存句柄供ISR使用（变量名保留兼容） */
-    UART5_Handler.Instance = USART1;
+    /* 使能 RX 中断 (手动管理, 不使用 HAL_UART_Receive_IT) */
+    UART5->CR1 |= USART_CR1_RXNEIE;
 }
-
-/* uart_init()使用直接寄存器配置，不调用HAL，故此MspInit无需实现 */
 
 u32 tpingg(u32 tmp)
 {
     u32 num = 1;
-    if (tmp == 0)
-    {
-        return 1;
-    }
-    else
-    {
-        while (tmp--)
-        {
-            num *= 10;
-        }
-        return num;
-    }
+    if (tmp == 0) return 1;
+    while (tmp--) num *= 10;
+    return num;
 }
 
 void send(uint16_t data)
 {
-    uint8_t send[10];
-    u32 send0 = 0;
-    u32 send1 = 0;
-    u32 send2 = 0;
-    send0 = data / 100;
-    send1 = (data % 100) / 10;
-    send2 = data % 10;
-    send[0] = send0 + '0';
-    send[1] = send1 + '0';
-    send[2] = send2 + '0';
-    (void)send;
+    uint8_t send_buf[10];
+    send_buf[0] = (data / 100) + '0';
+    send_buf[1] = ((data % 100) / 10) + '0';
+    send_buf[2] = (data % 10) + '0';
+    (void)send_buf;
 }
 
-/* 调试计数器：每收到一个字节+1，主循环中打印 */
-volatile u32 rx_debug_cnt = 0;
-
-void USART1_IRQHandler(void)
+/* UART5 中断服务函数 (手动处理接收) */
+void UART5_IRQHandler(void)
 {
     u8 Res;
 #if SYSTEM_SUPPORT_OS
     OSIntEnter();
 #endif
-    if (USART1->SR & USART_SR_RXNE)
+    if (UART5->SR & USART_SR_RXNE)
     {
-        Res = (u8)(USART1->DR & 0x00FF);
+        Res = (u8)(UART5->DR & 0x00FF);
 
         if ((USART_RX_STA & 0x8000) == 0)
         {
-
             if (USART_RX_STA & 0x4000)
             {
                 if (Res != 0x0a)
@@ -156,12 +118,60 @@ void USART1_IRQHandler(void)
             }
         }
     }
-    /* 清除可能的错误标志（ORE/NE/FE），防止中断阻塞 */
-    if (USART1->SR & (USART_SR_ORE | USART_SR_FE | USART_SR_NE)) {
-        (void)USART1->DR;
+    /* 清除错误标志 */
+    if (UART5->SR & (USART_SR_ORE | USART_SR_FE | USART_SR_NE)) {
+        (void)UART5->DR;
     }
 #if SYSTEM_SUPPORT_OS
     OSIntExit();
 #endif
+}
+
+/* ===== HAL_UART_MspInit (UART5 调试 + UART4 上位机) ===== */
+void HAL_UART_MspInit(UART_HandleTypeDef *huart)
+{
+    GPIO_InitTypeDef gpio = {0};
+
+    if (huart->Instance == UART5)
+    {
+        /* UART5_TX: PC12, AF8, push-pull */
+        __HAL_RCC_GPIOC_CLK_ENABLE();
+        __HAL_RCC_UART5_CLK_ENABLE();
+
+        gpio.Pin = GPIO_PIN_12;
+        gpio.Mode = GPIO_MODE_AF_PP;
+        gpio.Pull = GPIO_NOPULL;
+        gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+        gpio.Alternate = GPIO_AF8_UART5;
+        HAL_GPIO_Init(GPIOC, &gpio);
+
+        /* UART5_RX: PD2, AF8, pull-up */
+        __HAL_RCC_GPIOD_CLK_ENABLE();
+        gpio.Pin = GPIO_PIN_2;
+        gpio.Pull = GPIO_PULLUP;
+        HAL_GPIO_Init(GPIOD, &gpio);
+
+        HAL_NVIC_SetPriority(UART5_IRQn, 0, 0);
+        HAL_NVIC_EnableIRQ(UART5_IRQn);
+    }
+    else if (huart->Instance == UART4)
+    {
+        /* UART4_TX: PC10, UART4_RX: PC11, AF8 */
+        __HAL_RCC_GPIOC_CLK_ENABLE();
+        __HAL_RCC_UART4_CLK_ENABLE();
+
+        gpio.Pin = GPIO_PIN_10;
+        gpio.Mode = GPIO_MODE_AF_PP;
+        gpio.Pull = GPIO_PULLUP;
+        gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+        gpio.Alternate = GPIO_AF8_UART4;
+        HAL_GPIO_Init(GPIOC, &gpio);
+
+        gpio.Pin = GPIO_PIN_11;
+        HAL_GPIO_Init(GPIOC, &gpio);
+
+        HAL_NVIC_SetPriority(UART4_IRQn, 0, 1);
+        HAL_NVIC_EnableIRQ(UART4_IRQn);
+    }
 }
 #endif

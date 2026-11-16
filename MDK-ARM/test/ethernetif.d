@@ -1,5 +1,4 @@
-test\ethernetif.o: ../Core/Src/ethernetif.c
-test\ethernetif.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+test\ethernetif.o: ..\Core\Src\ethernetif.c
 test\ethernetif.o: ../Middlewares/LwIP/src/include/lwip/init.h
 test\ethernetif.o: ../Middlewares/LwIP/src/include/lwip/opt.h
 test\ethernetif.o: ../Core/Inc/lwipopts.h
@@ -7,6 +6,7 @@ test\ethernetif.o: ../Middlewares/LwIP/src/include/lwip/debug.h
 test\ethernetif.o: ../Middlewares/LwIP/src/include/lwip/arch.h
 test\ethernetif.o: ../Core/Inc/arch/cc.h
 test\ethernetif.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+test\ethernetif.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
 test\ethernetif.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 test\ethernetif.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
 test\ethernetif.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
@@ -29,7 +29,6 @@ test\ethernetif.o: ../Middlewares/LwIP/src/include/lwip/priv/memp_std.h
 test\ethernetif.o: ../Middlewares/LwIP/src/include/lwip/priv/memp_priv.h
 test\ethernetif.o: ../Middlewares/LwIP/src/include/lwip/priv/mem_priv.h
 test\ethernetif.o: ../Middlewares/LwIP/src/include/lwip/stats.h
-test\ethernetif.o: ../Middlewares/LwIP/src/include/lwip/tcpip.h
 test\ethernetif.o: ../Middlewares/LwIP/src/include/netif/ethernet.h
 test\ethernetif.o: ../Middlewares/LwIP/src/include/lwip/prot/ethernet.h
 test\ethernetif.o: ../Middlewares/LwIP/src/include/lwip/prot/ieee.h

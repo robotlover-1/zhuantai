@@ -5,6 +5,7 @@ test\ip.o: ../Middlewares/LwIP/src/include/lwip/debug.h
 test\ip.o: ../Middlewares/LwIP/src/include/lwip/arch.h
 test\ip.o: ../Core/Inc/arch/cc.h
 test\ip.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+test\ip.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
 test\ip.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 test\ip.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
 test\ip.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h

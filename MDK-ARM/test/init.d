@@ -1,10 +1,11 @@
-test\init.o: ../Middlewares/LwIP/src/core/init.c
+test\init.o: ..\Middlewares\LwIP\src\core\init.c
 test\init.o: ../Middlewares/LwIP/src/include/lwip/opt.h
 test\init.o: ../Core/Inc/lwipopts.h
 test\init.o: ../Middlewares/LwIP/src/include/lwip/debug.h
 test\init.o: ../Middlewares/LwIP/src/include/lwip/arch.h
 test\init.o: ../Core/Inc/arch/cc.h
 test\init.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+test\init.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
 test\init.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 test\init.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
 test\init.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
